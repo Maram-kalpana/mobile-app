@@ -4,8 +4,14 @@ import api from "./axios";
 
 // GET LIST — supports ?date=YYYY-MM-DD, ?attendance=present|absent, ?project_id=X
 export const getLabours = (params) => {
-  console.log("[labourApi] getLabours params:", JSON.stringify(params));
-  return api.get("/manager/labours/list", { params: params || undefined });
+  console.log(
+    "[labourApi] getLabours params:",
+    JSON.stringify(params)
+  );
+
+  return api.get("/manager/labours/list", {
+    params,
+  });
 };
 
 // ADD

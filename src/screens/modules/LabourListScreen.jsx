@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   FlatList,
@@ -24,12 +24,22 @@ import { SelectField } from '../../components/SelectField';
 import { useApp } from '../../contexts/AppContext';
 import { colors } from '../../theme/theme';
 import { getLabours, addLabour, deleteLabour, updateLabour } from '../../api/labourApi';
-import { markAttendance, getTodayAttendance } from '../../api/attendanceApi';
+import { markAttendance } from '../../api/attendanceApi';
 import {
   labourBelongsToProject,
   labourProjectIdFromRow,
-  attendanceBelongsToProject,
 } from '../../utils/labourProjectScope';
+
+/** Normalize any date value to a YYYY-MM-DD string. */
+function toDateOnlyStr(d) {
+  if (d == null || d === '') return '';
+  if (typeof d === 'string') return d.slice(0, 10);
+  try {
+    return new Date(d).toISOString().slice(0, 10);
+  } catch {
+    return '';
+  }
+}
 
 /** Vendor id/name from labour list API (flat vendor_id vs nested vendor object). */
 function labourVendorFromApi(item) {
@@ -46,16 +56,6 @@ function labourVendorFromApi(item) {
     vendorId: id != null && id !== '' ? id : null,
     vendorName: nameFromApi ? String(nameFromApi) : null,
   };
-}
-
-function toDateOnlyStr(d) {
-  if (d == null || d === '') return '';
-  if (typeof d === 'string') return d.slice(0, 10);
-  try {
-    return new Date(d).toISOString().slice(0, 10);
-  } catch {
-    return '';
-  }
 }
 
 /** Laravel-style validation payload → single message for inline display. */
@@ -81,13 +81,17 @@ export function LabourListScreen({ route }) {
   const { vendors, dateKey, projects: appProjects } = useApp();
 
   const today = dateKey();
+
+  // ── FIX 1: Always store selectedDate as a plain YYYY-MM-DD string ──
+  const [selectedDate, setSelectedDate] = useState(toDateOnlyStr(routeDate) || today);
+
   const [search, setSearch] = useState('');
-  const [selectedDate, setSelectedDate] = useState(routeDate || today);
+  const [attendanceFilter, setAttendanceFilter] = useState('all'); // 'all' | 'present' | 'absent'
   const [name, setName] = useState('');
   const [age, setAge] = useState('');
   const [phone, setPhone] = useState('');
   const [dailyWage, setDailyWage] = useState('');
-  const [effectiveFrom, setEffectiveFrom] = useState(routeDate || today);
+  const [effectiveFrom, setEffectiveFrom] = useState(toDateOnlyStr(routeDate) || today);
   const [gender, setGender] = useState('male');
   const [vendorId, setVendorId] = useState(null);
   const [photoUri, setPhotoUri] = useState(null);
@@ -104,100 +108,166 @@ export function LabourListScreen({ route }) {
   const [actionType, setActionType] = useState(null);
   const [actionLabour, setActionLabour] = useState(null);
   const [formError, setFormError] = useState('');
+
   const projectTitle =
     (appProjects || []).find((p) => String(p.id) === String(projectId))?.name || 'Project';
 
-  const loadLaboursAndAttendance = async () => {
+  // ── FIX 2: Normalize date before storing — ensures useEffect always gets a plain string ──
+  const handleDateChange = useCallback((val) => {
+  const normalized = toDateOnlyStr(val);
+
+  console.log("DATE CHANGED:", normalized);
+
+  if (normalized) {
+    setSelectedDate(normalized);
+  }
+}, []);
+
+  const loadLaboursAndAttendance = useCallback(async () => {
     try {
       setLoading(true);
-      const dateStr =
-        typeof selectedDate === 'string'
-          ? selectedDate
-          : new Date(selectedDate).toISOString().split('T')[0];
-      const params = {
-        ...(projectId != null && projectId !== '' ? { project_id: projectId } : {}),
-        date: dateStr,
-      };
-      console.log('[LabourListScreen] fetch params:', JSON.stringify(params));
-      const labourRes = await getLabours(params);
+      // selectedDate is already a YYYY-MM-DD string — no extra conversion needed
+      const dateStr = selectedDate;
+      const baseParams = {
+  ...(projectId != null && projectId !== '' ? { project_id: projectId } : {}),
+  date: dateStr,
+};
+
+const labourRes = await getLabours(baseParams);
+
+const presentRes = await getLabours({
+  ...baseParams,
+  attendance: 'present',
+});
+
+const absentRes = await getLabours({
+  ...baseParams,
+  attendance: 'absent',
+});
+   
+      
       const raw = labourRes?.data?.data ?? labourRes?.data ?? [];
       const data = Array.isArray(raw) ? raw : [];
+      const presentRaw =
+  presentRes?.data?.data ?? presentRes?.data ?? [];
+
+const absentRaw =
+  absentRes?.data?.data ?? absentRes?.data ?? [];
+
+const presentData = Array.isArray(presentRaw)
+  ? presentRaw
+  : [];
+
+const absentData = Array.isArray(absentRaw)
+  ? absentRaw
+  : [];
+
+console.log("PRESENT API:", presentData);
+console.log("ABSENT API:", absentData);
       const formatted = data
-        .map((item) => {
-          const { vendorId, vendorName } = labourVendorFromApi(item);
-          const fromRow = labourProjectIdFromRow(item);
-          const projectIdForRow =
-            fromRow != null && fromRow !== ''
-              ? fromRow
-              : projectId != null && projectId !== ''
-                ? projectId
-                : null;
-          return {
-            id: item.id,
-            name: item.full_name,
-            age: item.age,
-            gender: item.gender,
-            phone: item.phone,
-            vendorId,
-            vendorName,
-            photoUri: item.profile_pic,
-            dailyWage: item.daily_wage || 0,
-            effectiveFrom: item.effective_from || item.effective_from_date || null,
-            projectId: projectIdForRow,
-          };
-        })
-        .filter((row) => labourBelongsToProject(row, projectId));
+  .map((item) => {
 
-      setLabours(formatted);
+    console.log("RAW LABOUR ITEM:", item);
 
-      const attRes = await getTodayAttendance({
-        date: dateStr,
-        ...(projectId != null && projectId !== '' ? { project_id: projectId } : {}),
-      });
-      const attRaw = attRes?.data?.data ?? attRes?.data ?? [];
-      const attData = Array.isArray(attRaw) ? attRaw : [];
-      const allowedIds = new Set(formatted.map((l) => Number(l.id)));
-      const map = {};
-      attData.forEach((item) => {
-        if (!attendanceBelongsToProject(item, projectId)) return;
-        if (!allowedIds.has(Number(item.labour_id))) return;
-        map[item.labour_id] = item.is_present == 1;
-      });
-      setAttendanceMap(map);
-    } catch (err) {
-      console.log('Labour/attendance fetch error:', err.response?.data || err.message);
-      setLabours([]);
-      setAttendanceMap({});
+    // safer vendor extraction
+    const { vendorId, vendorName } = labourVendorFromApi(item);
+
+    // safer project id extraction
+    const projectIdForRow =
+      item.project_id ||
+      item.projectId ||
+      item.project?.id ||
+      item.project?.project_id ||
+      null;
+
+    console.log("PROJECT ID FOUND:", projectIdForRow);
+
+    return {
+      id: item.id,
+      name: item.full_name,
+      age: item.age,
+      gender: item.gender,
+      phone: item.phone,
+
+      vendorId,
+      vendorName,
+
+      photoUri: item.profile_pic,
+
+      dailyWage: item.daily_wage || 0,
+
+      effectiveFrom:
+        item.effective_from ||
+        item.effective_from_date ||
+        null,
+
+      // IMPORTANT
+      projectId: projectIdForRow,
+    };
+  })
+  
+
+    
+console.log("FINAL FORMATTED LABOURS:", formatted);
+
+setLabours(formatted);
+
+// CREATE ATTENDANCE MAP
+const map = {};
+
+presentData.forEach((item) => {
+  map[String(item.id)] = true;
+});
+
+absentData.forEach((item) => {
+  if (!(String(item.id) in map)) {
+    map[String(item.id)] = false;
+  }
+});
+
+console.log("ATTENDANCE MAP:", map);
+
+setAttendanceMap(map);
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedDate, projectId]); // selectedDate is now always a string — stable comparison
 
+  // Re-fetch when date changes while screen is focused
+  useEffect(() => {
+    loadLaboursAndAttendance();
+  }, [loadLaboursAndAttendance]);
+
+  // Re-fetch when screen regains focus
   useFocusEffect(
     useCallback(() => {
       loadLaboursAndAttendance();
-    }, [selectedDate, projectId])
+    }, [loadLaboursAndAttendance])
   );
 
   const filtered = useMemo(() => {
-    const vendorIdMatch = (p) =>
-      !filterVendorId || Number(p.vendorId) === Number(filterVendorId);
+  const vendorIdMatch = (p) =>
+    !filterVendorId || Number(p.vendorId) === Number(filterVendorId);
 
-    if (!search.trim()) {
-      return labours.filter(vendorIdMatch);
-    }
-    const q = search.toLowerCase();
-    return labours.filter((p) => {
-      const ctxVendorName = vendors.find((v) => Number(v.id) === Number(p.vendorId))?.name || '';
-      const searchHit =
-        p.name?.toLowerCase().includes(q) ||
-        p.phone?.includes(q) ||
-        (p.vendorName || '').toLowerCase().includes(q) ||
-        ctxVendorName.toLowerCase().includes(q);
-      return vendorIdMatch(p) && searchHit;
-    });
-  }, [filterVendorId, labours, search, vendors]);
+  if (!search.trim()) {
+    return labours.filter((p) => vendorIdMatch(p));
+  }
 
+  const q = search.toLowerCase();
+
+  return labours.filter((p) => {
+    const ctxVendorName =
+      vendors.find((v) => Number(v.id) === Number(p.vendorId))?.name || '';
+
+    const searchHit =
+      p.name?.toLowerCase().includes(q) ||
+      p.phone?.includes(q) ||
+      (p.vendorName || '').toLowerCase().includes(q) ||
+      ctxVendorName.toLowerCase().includes(q);
+
+    return vendorIdMatch(p) && searchHit;
+  });
+}, [filterVendorId, labours, search, vendors]);
   const openCamera = async () => {
     setShowPhotoModal(false);
     const perm = await ImagePicker.requestCameraPermissionsAsync();
@@ -278,80 +348,99 @@ export function LabourListScreen({ route }) {
 
   const presentCount = labours.filter((p) => attendanceMap[p.id]).length;
 
-  const renderItem = ({ item, index }) => {
-    const isPresent = attendanceMap[item.id] || false;
-    return (
-      <View style={[styles.row, index % 2 === 0 && styles.rowEven]}>
-        {/* Name */}
-        <View style={[styles.cell, styles.colName]}>
-          <Text style={styles.name}>{item.name || '—'}</Text>
-        </View>
+  // ── FIX 3: Attendance toggle with normalized date string + optimistic revert on error ──
+  const handleAttendanceToggle = useCallback(async (item) => {
+    const prevStatus = !!attendanceMap[item.id];
+    const newStatus = !prevStatus;
 
-        {/* Vendor */}
-        <View style={[styles.cell, styles.colVendor]}>
-          <Text style={styles.cellText}>
-            {item.vendorName ||
-              vendors.find((v) => Number(v.id) === Number(item.vendorId))?.name ||
-              '—'}
-          </Text>
-        </View>
+    // Optimistic update
+    setAttendanceMap((prev) => ({ ...prev, [item.id]: newStatus }));
+console.log("MARKING ATTENDANCE:", {
+  labour_id: item.id,
+  date: selectedDate,
+  is_present: newStatus ? 1 : 0,
+});
+    try {
+      await markAttendance({
+        labour_ids: [item.id],
+        date: selectedDate, // already a YYYY-MM-DD string — safe to send directly
+        is_present: newStatus ? 1 : 0,
+        ...(projectId != null && projectId !== '' ? { project_id: projectId } : {}),
+      });
+      console.log("ATTENDANCE UPDATED SUCCESSFULLY");
+      await loadLaboursAndAttendance();
+    } catch (err) {
+      // Revert on failure
+      setAttendanceMap((prev) => ({ ...prev, [item.id]: prevStatus }));
+      console.log('Attendance error:', err.response?.data || err.message);
+      Alert.alert('Error', 'Failed to update attendance. Please try again.');
+    }
+  }, [attendanceMap, selectedDate, projectId]);
 
-        {/* Gender */}
-        <View style={[styles.cell, styles.colGender]}>
-          <View style={[styles.genderBadge, item.gender === 'female' ? styles.genderF : styles.genderM]}>
-            <Text style={styles.genderText}>{item.gender?.[0]?.toUpperCase() ?? '—'}</Text>
+  const renderItem = useCallback(
+    ({ item, index }) => {
+      const isPresent = attendanceMap[item.id] === true;
+      return (
+        <View style={[styles.row, index % 2 === 0 && styles.rowEven]}>
+          {/* Name */}
+          <View style={[styles.cell, styles.colName]}>
+            <Text style={styles.name}>{item.name || '—'}</Text>
           </View>
-        </View>
 
-        {/* Attendance */}
-        <View style={[styles.cell, styles.colAttend]}>
-          <Pressable
-            onPress={async () => {
-              try {
-                const newStatus = !attendanceMap[item.id];
-                await markAttendance({
-                  labour_ids: [item.id],
-                  date: selectedDate,
-                  is_present: newStatus ? 1 : 0,
-                  ...(projectId != null && projectId !== '' ? { project_id: projectId } : {}),
-                });
-                setAttendanceMap((prev) => ({ ...prev, [item.id]: newStatus }));
-              } catch (err) {
-                console.log('Attendance error:', err.response?.data || err.message);
-              }
-            }}
-          >
-            <View style={[styles.checkbox, isPresent && styles.checkboxActive]}>
-              {isPresent && <MaterialCommunityIcons name="check" size={13} color="#fff" />}
+          {/* Vendor */}
+          <View style={[styles.cell, styles.colVendor]}>
+            <Text style={styles.cellText}>
+              {item.vendorName ||
+                vendors.find((v) => Number(v.id) === Number(item.vendorId))?.name ||
+                '—'}
+            </Text>
+          </View>
+
+          {/* Gender */}
+          <View style={[styles.cell, styles.colGender]}>
+            <View style={[styles.genderBadge, item.gender === 'female' ? styles.genderF : styles.genderM]}>
+              <Text style={styles.genderText}>{item.gender?.[0]?.toUpperCase() ?? '—'}</Text>
             </View>
-          </Pressable>
-        </View>
+          </View>
 
-        {/* Actions */}
-        <View style={[styles.cell, styles.colAction]}>
-          <View style={styles.actionCellRow}>
-            <Pressable
-              onPress={() => {
-                setSelectedLabour(item);
-                setShowViewModal(true);
-              }}
-            >
-              <MaterialCommunityIcons name="eye" size={18} color="#2563eb" />
+          {/* Attendance */}
+          <View style={[styles.cell, styles.colAttend]}>
+            <Pressable onPress={() => handleAttendanceToggle(item)}>
+              <View style={[styles.checkbox, isPresent && styles.checkboxActive]}>
+                {isPresent && <MaterialCommunityIcons name="check" size={13} color="#fff" />}
+              </View>
             </Pressable>
           </View>
+
+          {/* Actions */}
+          <View style={[styles.cell, styles.colAction]}>
+            <View style={styles.actionCellRow}>
+              <Pressable
+                onPress={() => {
+                  setSelectedLabour(item);
+                  setShowViewModal(true);
+                }}
+              >
+                <MaterialCommunityIcons name="eye" size={18} color="#2563eb" />
+              </Pressable>
+            </View>
+          </View>
         </View>
-      </View>
-    );
-  };
+      );
+    },
+    [attendanceMap, vendors, handleAttendanceToggle]
+  );
 
   return (
     <ScreenContainer edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.wrap}>
         <FlatList
+          key={selectedDate}
           style={styles.listFlex}
           data={filtered}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderItem}
+          extraData={`${JSON.stringify(attendanceMap)}-${filtered.length}-${selectedDate}`}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[styles.list, filtered.length === 0 && styles.listEmptyGrow]}
           ListHeaderComponent={(
@@ -371,7 +460,8 @@ export function LabourListScreen({ route }) {
               {/* DATE + SEARCH */}
               <View style={styles.controlRow}>
                 <View style={styles.dateWrap}>
-                  <DatePickerField label="Date" value={selectedDate} onChange={setSelectedDate} />
+                  {/* ── FIX: use handleDateChange instead of setSelectedDate ── */}
+                  <DatePickerField label="Date" value={selectedDate} onChange={handleDateChange} />
                 </View>
                 <View style={styles.searchContainer}>
                   <Text style={styles.label}>Search</Text>
@@ -392,6 +482,8 @@ export function LabourListScreen({ route }) {
                   </View>
                 </View>
               </View>
+
+              
 
               {/* PRESENT BADGE + ADD BUTTON */}
               <View style={styles.actionContainer}>
@@ -543,7 +635,7 @@ export function LabourListScreen({ route }) {
                 value={effectiveFrom}
                 onChange={(v) => {
                   setFormError('');
-                  setEffectiveFrom(v);
+                  setEffectiveFrom(toDateOnlyStr(v));
                 }}
               />
             </View>
@@ -558,7 +650,12 @@ export function LabourListScreen({ route }) {
               placeholder="Select vendor"
               options={[
                 { label: 'Select vendor', value: null },
-                ...vendors.map((v) => ({ label: v.name, value: v.id })),
+                ...(Array.isArray(vendors)
+  ? vendors.map((v) => ({
+      label: v.name,
+      value: v.id,
+    }))
+  : []),
               ]}
             />
 
@@ -602,16 +699,24 @@ export function LabourListScreen({ route }) {
                       ...(projectId != null && projectId !== '' ? { project_id: projectId } : {}),
                     });
                   } else {
-                    await addLabour({
-                      full_name: name,
-                      age: Number(age),
-                      gender,
-                      phone,
-                      daily_wage: wageNum,
-                      effective_from: eff,
-                      vendor_id: vendorId,
-                      ...(projectId != null && projectId !== '' ? { project_id: projectId } : {}),
-                    });
+                    const payload = {
+  full_name: name,
+  age: Number(age),
+  gender,
+  phone,
+  daily_wage: wageNum,
+  effective_from: eff,
+  vendor_id: vendorId,
+
+  // IMPORTANT
+  project_id: projectId,
+};
+
+console.log("ADDING LABOUR PAYLOAD:", payload);
+
+const res = await addLabour(payload);
+
+console.log("ADD LABOUR RESPONSE:", res?.data);
                   }
                   setEditId(null);
                   setFormError('');
@@ -882,6 +987,27 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     marginLeft: 6,
   },
+
+  // attendance filter
+  filterSection: { marginHorizontal: 16, marginBottom: 10 },
+  filterRow: { flexDirection: 'row', gap: 8, marginBottom: 6 },
+  filterBtn: {
+    flex: 1,
+    height: 38,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  filterBtnActive: {
+    backgroundColor: '#dbeafe',
+    borderColor: '#93c5fd',
+  },
+  filterBtnText: { fontSize: 13, fontWeight: '600', color: '#64748b' },
+  filterBtnTextActive: { color: '#1d4ed8', fontWeight: '800' },
+  filterHint: { fontSize: 11, color: colors.mutedText, lineHeight: 15 },
 
   // action row: present badge + add button
   actionContainer: { marginHorizontal: 16, marginBottom: 12 },

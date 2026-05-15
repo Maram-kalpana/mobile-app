@@ -1,9 +1,10 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import React, { useMemo } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { ScreenContainer } from '../../components/ScreenContainer';
-import { useApp } from '../../contexts/AppContext';
+import { getManagerExpenseList } from '../../api/expenseApi';
 import { colors } from '../../theme/theme';
 
 function formatINR(value) {
@@ -16,10 +17,47 @@ function formatINR(value) {
 
 export function ExpenseListScreen({ route, navigation }) {
   const { projectId } = route.params;
-  const { getLedger } = useApp();
 
-  const ledger = getLedger(projectId) || { expenses: [] };
-  const totalExpenses = useMemo(() => ledger.expenses.reduce((sum, e) => sum + e.amount, 0), [ledger.expenses]);
+  const [expenses, setExpenses] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          setLoading(true);
+          const res = await getManagerExpenseList(projectId);
+          if (cancelled) return;
+          const list = res?.data?.data ?? res?.data ?? [];
+          setExpenses(Array.isArray(list) ? list : []);
+        } catch (err) {
+          console.log('Expense list fetch error:', err?.message);
+          if (!cancelled) setExpenses([]);
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      })();
+      return () => { cancelled = true; };
+    }, [projectId]),
+  );
+
+  const totalExpenses = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+
+  const toExpenseCard = (item) => ({
+    id: item.id,
+    name: item.expense_type
+      ? `${item.expense_type.charAt(0).toUpperCase() + item.expense_type.slice(1)} expense`
+      : 'Expense',
+    partyName: item.party?.name || item.party_name || '',
+    type: item.expense_type || '—',
+    amount: Number(item.amount || 0),
+    dateIso: item.date || item.created_at || '',
+    remarks: item.remarks || '',
+    project_id: item.project_id,
+    party_id: item.party_id,
+    _raw: item,
+  });
 
   return (
     <ScreenContainer edges={['top', 'left', 'right']}>
@@ -27,48 +65,58 @@ export function ExpenseListScreen({ route, navigation }) {
         <View style={styles.header}>
           <Text style={styles.h1}>Expenses</Text>
           <Text style={styles.sub}>
-            {ledger.expenses.length} entries • {formatINR(totalExpenses)}
+            {loading ? 'Loading...' : `${expenses.length} entries • ${formatINR(totalExpenses)}`}
           </Text>
         </View>
 
-        <FlatList
-          style={styles.listFlex}
-          data={ledger.expenses || []}
-          keyExtractor={(e) => String(e.id)}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => {
-            if (!item) return null;
-            return (
-              <Pressable
-                onPress={() => navigation.navigate('ExpenseDetails', { projectId, expense: item })}
-                style={styles.card}
-              >
-                <View style={styles.row}>
-                  <View style={styles.iconWrap}>
-                    <MaterialCommunityIcons name="receipt" size={20} color="#fff" />
-                  </View>
+        {loading ? (
+          <View style={{ alignItems: 'center', paddingVertical: 32 }}>
+            <ActivityIndicator size="large" color={colors.buttonStart} />
+          </View>
+        ) : (
+          <FlatList
+            style={styles.listFlex}
+            data={expenses}
+            keyExtractor={(e) => String(e.id)}
+            contentContainerStyle={styles.list}
+            renderItem={({ item }) => {
+              const card = toExpenseCard(item);
+              return (
+                <Pressable
+                  onPress={() =>
+                    navigation.navigate('ExpenseDetails', {
+                      projectId,
+                      expense: card,
+                    })
+                  }
+                  style={styles.card}
+                >
+                  <View style={styles.row}>
+                    <View style={styles.iconWrap}>
+                      <MaterialCommunityIcons name="receipt" size={20} color="#fff" />
+                    </View>
 
-                  <View style={styles.meta}>
-                    <Text style={styles.name}>{item?.name || 'No name'}</Text>
-                    <Text style={styles.sub2}>
-                      {item?.type || '—'} •{' '}
-                      {item?.dateIso ? new Date(item.dateIso).toLocaleDateString() : 'No date'}
-                    </Text>
-                  </View>
+                    <View style={styles.meta}>
+                      <Text style={styles.name}>{card.partyName || card.name}</Text>
+                      <Text style={styles.sub2}>
+                        {card.type} • {card.dateIso ? new Date(card.dateIso).toLocaleDateString() : 'No date'}
+                      </Text>
+                    </View>
 
-                  <Text style={styles.amount}>{formatINR(item?.amount || 0)}</Text>
-                </View>
-              </Pressable>
-            );
-          }}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <MaterialCommunityIcons name="cash-remove" size={32} color="rgba(233,242,242,0.7)" />
-              <Text style={styles.emptyTitle}>No expenses yet</Text>
-              <Text style={styles.emptyText}>Tap “Add expense” from Accounts to create the first entry.</Text>
-            </View>
-          }
-        />
+                    <Text style={styles.amount}>{formatINR(card.amount)}</Text>
+                  </View>
+                </Pressable>
+              );
+            }}
+            ListEmptyComponent={
+              <View style={styles.empty}>
+                <MaterialCommunityIcons name="cash-remove" size={32} color="rgba(233,242,242,0.7)" />
+                <Text style={styles.emptyTitle}>No expenses yet</Text>
+                <Text style={styles.emptyText}>Tap "Add expense" from Accounts to create the first entry.</Text>
+              </View>
+            }
+          />
+        )}
       </View>
     </ScreenContainer>
   );
@@ -88,38 +136,38 @@ const styles = StyleSheet.create({
   sub: { marginTop: 6, color: colors.mutedText, fontSize: 13 },
   list: { padding: 16, paddingBottom: 28, gap: 12, flexGrow: 1 },
   card: {
-  backgroundColor: '#ffffff', // ✅ white card
-  borderRadius: 16,
-  padding: 14,
-  borderWidth: 1,
-  borderColor: '#e5e7eb', // light gray border
-},
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
   row: { flexDirection: 'row', alignItems: 'center' },
   iconWrap: {
-  width: 40,
-  height: 40,
-  borderRadius: 14,
-  backgroundColor: '#fee2e2', // light red
-  alignItems: 'center',
-  justifyContent: 'center',
-  marginRight: 12,
-},
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: '#fee2e2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
   meta: { flex: 1 },
   name: {
-  color: '#111827', // dark text
-  fontSize: 15,
-  fontWeight: '900',
-},
+    color: '#111827',
+    fontSize: 15,
+    fontWeight: '900',
+  },
   sub2: {
-  marginTop: 3,
-  color: '#6b7280', // muted gray
-  fontSize: 12,
-},
-amount: {
-  color: '#16a34a', // ✅ green for money (better UX)
-  fontSize: 14,
-  fontWeight: '900',
-},
+    marginTop: 3,
+    color: '#6b7280',
+    fontSize: 12,
+  },
+  amount: {
+    color: '#16a34a',
+    fontSize: 14,
+    fontWeight: '900',
+  },
   empty: {
     marginTop: 24,
     alignItems: 'center',

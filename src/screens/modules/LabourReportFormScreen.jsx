@@ -1,5 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   KeyboardAvoidingView,
@@ -70,10 +70,15 @@ export function LabourReportFormScreen({ route, navigation }) {
           : new Date(selectedDate).toISOString().split('T')[0];
       const q = projectId != null && projectId !== '' ? { project_id: projectId } : {};
       const [labourRes, attRes, workRes] = await Promise.all([
+    
         getLabours({ ...q, date: dateStr }),
         getTodayAttendance({ date: dateStr, ...q }),
         getWorkList({ date: dateStr, ...q }).catch(() => null),
       ]);
+      console.log("FETCHING REPORT DATA:", {
+  project_id: projectId,
+  date: dateStr,
+});
       const rawList = labourRes?.data?.data ?? labourRes?.data ?? [];
       const rawLabours = Array.isArray(rawList) ? rawList : [];
       const laboursData = rawLabours
@@ -92,33 +97,81 @@ export function LabourReportFormScreen({ route, navigation }) {
       // Parse work entries from API response
       const workRaw = workRes?.data?.data ?? workRes?.data ?? [];
       const workList = Array.isArray(workRaw) ? workRaw : [];
-      const mapped = workList.map((w) => {
-        const vendorFromApi = w?.vendor || {};
-        const vid =
-          w?.vendor_id ??
-          vendorFromApi?.id ??
-          null;
-        const vName =
-          w?.vendor_name ??
-          vendorFromApi?.name ??
-          '';
-        const labourIds = w?.labour_ids
-          ? (Array.isArray(w.labour_ids) ? w.labour_ids : [])
-          : (w?.labourIds || []);
-        const labourNames = w?.labour_names || w?.labourNames || '';
-        return {
-          id: w.id,
-          projectId: projectId,
-          date: dateStr,
-          vendorId: vid != null && vid !== '' ? String(vid) : 'no_vendor',
-          vendorName: vName ? String(vName) : '',
-          workDone: w.work_done ?? w.workDone ?? '',
-          measurement: w.measurement ?? w.measure ?? '',
-          labourIds,
-          labourNames: Array.isArray(labourNames) ? labourNames.join(', ') : String(labourNames),
-          editReason: w.edit_reason ?? w.editReason ?? '',
-        };
-      });
+      console.log("WORK API RESPONSE:");
+console.log(JSON.stringify(workList, null, 2));
+   const mapped = [];
+
+workList.forEach((group) => {
+
+  const vendorId =
+    group?.vendor_id != null
+      ? String(group.vendor_id)
+      : 'no_vendor';
+
+  const vendorName =
+    group?.vendor_name || '';
+
+  const works = Array.isArray(group?.works)
+    ? group.works
+    : [];
+
+  const latestWork = works[works.length - 1];
+
+if (latestWork) {
+
+  const labourIds = Array.isArray(latestWork?.labours)
+    ? latestWork.labours.map((l) => Number(l.labour_id))
+    : [];
+
+  const labourNames =
+    latestWork?.labour_names ||
+    (Array.isArray(latestWork?.labours)
+      ? latestWork.labours
+          .map((l) => l.labour_name)
+          .filter(Boolean)
+          .join(', ')
+      : '');
+
+  mapped.push({
+
+    id:
+      latestWork?.group_id ||
+      latestWork?.id ||
+      Date.now() + Math.random(),
+
+    projectId: projectId,
+
+    date:
+      latestWork?.date ||
+      dateStr,
+
+    vendorId,
+
+    vendorName,
+
+    workDone:
+      latestWork?.work_done ||
+      '',
+
+    measurement:
+      latestWork?.measurement ||
+      '',
+
+    labourIds,
+
+    labourNames,
+
+    editReason:
+      latestWork?.edit_reason ||
+      '',
+  });
+}
+});
+
+console.log("FINAL MAPPED WORK ENTRIES:");
+console.log(JSON.stringify(mapped, null, 2));
+
+setWorkEntries(mapped);
       setWorkEntries(mapped);
     } catch (err) {
       console.log('Report fetch error:', err.response?.data || err.message);
@@ -131,10 +184,16 @@ export function LabourReportFormScreen({ route, navigation }) {
   }, [selectedDate, projectId]);
 
   useFocusEffect(
-    useCallback(() => {
-      fetchData();
-    }, [fetchData])
-  );
+  useCallback(() => {
+    console.log("REPORT SCREEN FOCUSED");
+    fetchData();
+  }, [fetchData])
+);
+
+useEffect(() => {
+  console.log("REPORT DATE CHANGED:", selectedDate);
+  fetchData();
+}, [selectedDate]);
 
   const vendorsWithRows = useMemo(() => {
     const presentLabourIds = (attendance || [])

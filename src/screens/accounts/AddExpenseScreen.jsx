@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useMemo, useState, useCallback } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SegmentedButtons } from 'react-native-paper';
 
 import { AppTextField } from '../../components/AppTextField';
@@ -9,6 +9,7 @@ import { ScreenContainer } from '../../components/ScreenContainer';
 import { SelectField } from '../../components/SelectField';
 import { useApp } from '../../contexts/AppContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { addManagerExpense } from '../../api/expenseApi';
 import { colors } from '../../theme/theme';
 
 function vendorsMatchingType(vendors, expenseType) {
@@ -43,7 +44,7 @@ function vendorsMatchingType(vendors, expenseType) {
 export function AddExpenseScreen({ route, navigation }) {
   const { projectId } = route.params;
   const { user } = useAuth();
-  const { addExpense, projects, vendors } = useApp();
+  const { projects, vendors } = useApp();
   const project = useMemo(
     () => projects.find((p) => String(p.id) === String(projectId)),
     [projects, projectId],
@@ -52,6 +53,8 @@ export function AddExpenseScreen({ route, navigation }) {
   const [expenseType, setExpenseType] = useState('Labour');
   const [partyId, setPartyId] = useState(null);
   const [amount, setAmount] = useState('');
+  const [remarks, setRemarks] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const partyList = useMemo(
     () => vendorsMatchingType(vendors, expenseType),
@@ -78,15 +81,93 @@ export function AddExpenseScreen({ route, navigation }) {
         ? 'Party name (material)'
         : 'Party name (machinery hire)';
 
-  const selectedName = partyList.find((v) => v.id === partyId)?.name || '';
-
   const disabled = useMemo(
-    () => partyId == null || Number(amount) <= 0 || !Number.isFinite(Number(amount)),
-    [partyId, amount],
+    () => partyId == null || Number(amount) <= 0 || !Number.isFinite(Number(amount)) || submitting,
+    [partyId, amount, submitting],
   );
 
   const dateLabel = useMemo(() => new Date().toLocaleString(), []);
 
+  const expenseTypeMap = { Labour: 'labour', Material: 'material', Machinery: 'machinery' };
+
+  const handleSave = useCallback(async () => {
+  if (!user || disabled) return;
+
+  setSubmitting(true);
+
+  try {
+    const payload = {
+      project_id: String(projectId),
+      expense_type: expenseTypeMap[expenseType] || 'labour',
+      party_id: Number(partyId),
+      amount: Number(amount),
+      date: new Date().toISOString().split('T')[0],
+      remarks: remarks.trim() || '',
+    };
+
+    console.log("=================================");
+    console.log("ADD EXPENSE API CALLED");
+    console.log("Payload:", JSON.stringify(payload, null, 2));
+    console.log("=================================");
+
+    const res = await addManagerExpense(payload);
+
+    console.log("=================================");
+    console.log("API SUCCESS RESPONSE");
+    console.log(JSON.stringify(res?.data, null, 2));
+    console.log("=================================");
+
+    const created = res?.data?.data ?? res?.data;
+
+    const expense = {
+      id: created?.id ?? String(Date.now()),
+      name: partyList.find((v) => v.id === partyId)?.name || 'Party',
+      type: expenseType,
+      amount: Number(amount),
+      dateIso: new Date().toISOString(),
+      remarks: remarks.trim() || '',
+      party_id: partyId,
+      project_id: projectId,
+    };
+
+    console.log("Navigating to ExpenseDetails");
+
+    navigation.replace('ExpenseDetails', { projectId, expense });
+
+  } catch (err) {
+
+    console.log("=================================");
+    console.log("API ERROR OCCURRED");
+    console.log("FULL ERROR:", err);
+    console.log("ERROR MESSAGE:", err?.message);
+    console.log("ERROR RESPONSE:", err?.response);
+    console.log("ERROR DATA:", err?.response?.data);
+    console.log("=================================");
+
+    Alert.alert(
+      'Error',
+      JSON.stringify(
+        err?.response?.data || err?.message || 'Failed to add expense',
+        null,
+        2
+      )
+    );
+
+  } finally {
+    console.log("Request completed");
+    setSubmitting(false);
+  }
+}, [
+  user,
+  disabled,
+  projectId,
+  expenseType,
+  partyId,
+  amount,
+  remarks,
+  partyList,
+  navigation,
+]);
   return (
     <ScreenContainer edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
@@ -128,7 +209,7 @@ export function AddExpenseScreen({ route, navigation }) {
             {partyList.length === 0 ? (
               <Text style={styles.hint}>
                 No vendors match this type yet. Add vendors whose category or name suggests {expenseType.toLowerCase()}{' '}
-                (e.g. “Labour contractor”, “Cement supplier”).
+                (e.g. "Labour contractor", "Cement supplier").
               </Text>
             ) : null}
 
@@ -140,21 +221,18 @@ export function AddExpenseScreen({ route, navigation }) {
               placeholder="0"
             />
 
+            <AppTextField
+              label="Remarks (optional)"
+              value={remarks}
+              onChangeText={setRemarks}
+              placeholder="e.g. Payment for completed work"
+              multiline
+            />
+
             <GradientButton
-              title="Save expense"
+              title={submitting ? 'Saving...' : 'Save expense'}
               disabled={disabled}
-              onPress={async () => {
-                if (!user) return;
-                const exp = await addExpense(projectId, {
-                  managerId: user.id,
-                  name: selectedName,
-                  partyId,
-                  type: expenseType,
-                  amount: Number(amount),
-                  dateIso: new Date().toISOString(),
-                });
-                navigation.replace('ExpenseDetails', { projectId, expense: exp });
-              }}
+              onPress={handleSave}
             />
           </View>
         </ScrollView>

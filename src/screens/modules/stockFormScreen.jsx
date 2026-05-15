@@ -17,7 +17,7 @@ import { SelectField } from '../../components/SelectField';
 import { DatePickerField } from '../../components/DatePickerField';
 import { useApp } from '../../contexts/AppContext';
 import { getItems } from '../../api/itemApi';
-import { getStockReportList, addStockReport, updateStockReport, getStockReportDetails } from '../../api/stockApi';
+import { addStockReport, updateStockReport, getStockReportDetails } from '../../api/stockApi';
 import { colors } from '../../theme/theme';
 
 function parseStockNum(s) {
@@ -95,9 +95,9 @@ export function StockFormScreen({ route, navigation }) {
         setDate(data.date || today);
         setItemId(data.item_id ?? data.itemId ?? null);
         setVendorId(data.vendor_id ?? data.vendorId ?? null);
-        setOpenBal(String(data.open_bal ?? data.openBal ?? data.opening_balance ?? ''));
+        setOpenBal(String(data.opening_balance ?? data.open_bal ?? data.openBal ?? ''));
         setReceived(String(data.received ?? data.received_qty ?? ''));
-        setCum(String(data.cum ?? data.cumulative ?? data.consumed ?? ''));
+        setCum(String(data.used ?? data.cum ?? data.cumulative ?? data.consumed ?? ''));
         setBal(String(data.bal ?? data.balance ?? data.closing_balance ?? ''));
         setEditReason('');
       } catch (err) {
@@ -138,29 +138,22 @@ export function StockFormScreen({ route, navigation }) {
     const formattedDate =
       typeof date === 'string' ? date : new Date(date).toISOString().split('T')[0];
 
-    const itemName =
-      (itemsList || []).find((i) => String(i.id) === String(itemId))?.name || '';
-    const vendorName =
-      (vendors || []).find((v) => String(v.id) === String(vendorId))?.name || '';
-
     const payload = {
-      project_id: projectId,
       date: formattedDate,
+      project_id: projectId,
       item_id: itemId,
-      item_name: itemName,
       vendor_id: vendorId,
-      vendor_name: vendorName,
-      open_bal: openBal.trim(),
+      opening_balance: openBal.trim(),
       received: received.trim(),
-      cum: cum.trim(),
-      bal: bal.trim(),
+      used: cum.trim(),
     };
     if (isEditMode) {
-      payload.edit_reason = editReason.trim();
+      payload.remark = editReason.trim();
     }
 
     setSaving(true);
     try {
+      console.log('Update payload:', JSON.stringify(payload));
       if (isEditMode) {
         await updateStockReport(entryId, payload);
       } else {

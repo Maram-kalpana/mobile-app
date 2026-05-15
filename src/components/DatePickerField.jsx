@@ -3,10 +3,19 @@ import React, { useState } from 'react';
 import { Pressable, Text, View, Platform } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
+/** Convert a Date to YYYY-MM-DD using LOCAL timezone (avoids UTC offset shift). */
+function localDateStr(d) {
+  if (!d) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export function DatePickerField({ label = 'Date', value, onChange, style }) {
   const [show, setShow] = useState(false);
 
-  const selectedDate = value ? new Date(value) : new Date();
+  const selectedDate = value ? new Date(value + 'T00:00:00') : new Date();
 
   return (
     <View style={style}>
@@ -27,10 +36,8 @@ export function DatePickerField({ label = 'Date', value, onChange, style }) {
         }}
       >
         <Text>
-  {value
-    ? new Date(value).toISOString().split('T')[0]
-    : 'Select date'}
-</Text>
+          {value || 'Select date'}
+        </Text>
 
         <MaterialCommunityIcons name="calendar" size={20} color="#2563eb" />
       </Pressable>
@@ -44,7 +51,7 @@ export function DatePickerField({ label = 'Date', value, onChange, style }) {
           onChange={(event, date) => {
             setShow(false);
             if (date) {
-              const formatted = date.toISOString().split('T')[0];
+              const formatted = localDateStr(date);
               onChange(formatted);
             }
           }}

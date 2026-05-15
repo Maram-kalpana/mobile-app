@@ -73,7 +73,7 @@ export default function HomeDashboardScreen({ navigation }) {
 
       // Use first project for dashboard summary (or aggregate all)
       if (projectList.length > 0) {
-        const firstId = projectList[0].id;
+       const firstId = projectList[0]._id || projectList[0].id;
         const dRes = await getProjectDashboard(firstId);
         console.log('DASHBOARD API:', JSON.stringify(dRes?.data, null, 2));
         if (dRes?.data?.success) {

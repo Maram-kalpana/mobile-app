@@ -21,11 +21,12 @@ function formatINR(value) {
 
 export function AccountsDashboardScreen({ route, navigation }) {
   const { projectId } = route.params;
-  const { setTotalAmount, projects } = useApp();
+  const { setTotalAmount, getBudget, projects } = useApp();
   const project = useMemo(
     () => projects.find((p) => String(p.id) === String(projectId)),
     [projects, projectId],
   );
+  const localBudget = getBudget(projectId);
 
   // ── Dashboard data from API ────────────────────────────────────
   const [dashData, setDashData] = useState(null);
@@ -51,7 +52,8 @@ export function AccountsDashboardScreen({ route, navigation }) {
     }, [projectId])
   );
 
-  const totalAmount = dashData?.total_amount ?? dashData?.allocated_budget ?? 0;
+  // total_amount from API or fallback to locally stored budget
+  const totalAmount = dashData?.total_amount ?? dashData?.allocated_budget ?? localBudget ?? 0;
   const totalExpenses = dashData?.total_expenses ?? dashData?.expenses ?? 0;
   const balance = dashData?.balance ?? (Number(totalAmount) - Number(totalExpenses));
 

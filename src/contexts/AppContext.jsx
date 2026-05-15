@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, {
   createContext,
   useCallback,
@@ -16,8 +15,6 @@ import {
 import { sameScopedProject } from "../utils/labourProjectScope";
 import { useAuth } from "./AuthContext";
 
-const STORAGE_KEY = '@constructionERP/appState_v2';
-
 /* -------------------- HELPERS -------------------- */
 
 function makeId(prefix) {
@@ -25,7 +22,13 @@ function makeId(prefix) {
 }
 
 function dateKey(d = new Date()) {
-  return d.toISOString().slice(0, 10);
+  // Use LOCAL date (getFullYear / getMonth / getDate) to avoid UTC offset shift.
+  // e.g. India is UTC+5:30, so midnight IST is 6:30PM previous day UTC.
+  // .toISOString() would return the wrong date during evening hours.
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function bundleKey(projectId, day) {
@@ -44,8 +47,9 @@ export function AppProvider({ children }) {
 
   const [vendors, setVendors] = useState([]);
   const [materials, setMaterials] = useState({});
-  const [ledgerData, setLedgerData] = useState({});
-  const [stockData, setStockData] = useState([]); // ✅ NEW
+  const [stockData, setStockData] = useState([]);
+  // ── Local budget state (no API endpoint for setting total amount) ──
+  const [budgetData, setBudgetData] = useState({});
 
   /** Local labour work log lines keyed by date + vendor (shown on daily labour report cards). */
   const [labourWorkEntries, setLabourWorkEntries] = useState([]);
@@ -266,48 +270,22 @@ const getStockByProject = useCallback((projectId) => {
   if (projectId == null) return [];
   return stockData.filter((s) => String(s.projectId) === String(projectId));
 }, [stockData]);
-/* -------------------- LEDGER -------------------- */
+/* -------------------- BUDGET (local allocated amount — no API endpoint) -------------------- */
 
-const getLedger = useCallback((projectId) => {
-  return ledgerData[projectId] || {
-    totalAmount: 0,
-    expenses: [],
-  };
-}, [ledgerData]);
-
-const addExpense = useCallback((projectId, expense) => {
-  const newExpense = {
-    id: makeId('exp'),
-    ...expense,
-  };
-
-  const next = {
-    ...ledgerData,
+const setTotalAmount = useCallback((projectId, totalAmount) => {
+  const n = Number(totalAmount);
+  const amt = Number.isFinite(n) && n >= 0 ? n : 0;
+  setBudgetData((prev) => ({
+    ...prev,
     [projectId]: {
-      totalAmount: ledgerData[projectId]?.totalAmount || 0,
-      expenses: [
-        ...(ledgerData[projectId]?.expenses || []),
-        newExpense,
-      ],
+      totalAmount: amt,
     },
-  };
+  }));
+}, []);
 
-  setLedgerData(next);
-
-  return newExpense; // ✅ VERY IMPORTANT
-}, [ledgerData]);
-
-  const setTotalAmount = useCallback((projectId, totalAmount) => {
-    const n = Number(totalAmount);
-    const amt = Number.isFinite(n) && n >= 0 ? n : 0;
-    setLedgerData((prev) => ({
-      ...prev,
-      [projectId]: {
-        totalAmount: amt,
-        expenses: prev[projectId]?.expenses || [],
-      },
-    }));
-  }, []);
+const getBudget = useCallback((projectId) => {
+  return budgetData[projectId]?.totalAmount ?? 0;
+}, [budgetData]);
 
   /* -------------------- CONTEXT VALUE -------------------- */
 
@@ -330,9 +308,8 @@ const addExpense = useCallback((projectId, expense) => {
   deleteStockEntry,   // ✅ ADD THIS (missing)
   getStockByProject,
 
-  // LEDGER
-  getLedger,
-  addExpense,
+  // BUDGET (local allocated amount)
+  getBudget,
   setTotalAmount,
 
   labourWorkEntries,
@@ -347,7 +324,6 @@ const addExpense = useCallback((projectId, expense) => {
   saveVendor,
   deleteVendor,
   materials,
-  ledgerData,
   stockData,
   labourWorkEntries,
   addLabourWorkEntry,
@@ -356,6 +332,7 @@ const addExpense = useCallback((projectId, expense) => {
   addStockEntry,
   deleteStockEntry,
   getStockByProject,
+  budgetData,
   setTotalAmount,
 ]);
 

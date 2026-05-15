@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 
 import { AppTextField } from '../../components/AppTextField';
+import { DatePickerField } from '../../components/DatePickerField';
 import { GradientButton } from '../../components/GradientButton';
 import { ScreenContainer } from '../../components/ScreenContainer';
 import { SelectField } from '../../components/SelectField';
@@ -54,8 +55,9 @@ export function MachineFormScreen({ route, navigation }) {
   const { projectId, entryId, workDate: routeWorkDate } = route.params || {};
   const { vendors, dateKey, projects } = useApp();
   const today = dateKey();
-  const workDate =
-    routeWorkDate && String(routeWorkDate).length >= 8 ? String(routeWorkDate).slice(0, 10) : today;
+  const [workDate, setWorkDate] = useState(
+    routeWorkDate && String(routeWorkDate).length >= 8 ? String(routeWorkDate).slice(0, 10) : today
+  );
 
   const projectTitle =
     (projects || []).find((p) => String(p.id) === String(projectId))?.name || 'Project';
@@ -185,6 +187,14 @@ export function MachineFormScreen({ route, navigation }) {
             <MaterialCommunityIcons name="office-building-outline" size={16} color="#1d78d8" />
             <Text style={styles.projectPillText}>{projectTitle}</Text>
           </View>
+
+          {/* ── Date ── */}
+          <DatePickerField
+            label="Date"
+            value={workDate}
+            onChange={setWorkDate}
+            style={{ marginBottom: 16 }}
+          />
 
           <Text style={styles.sectionLabel}>Equipment</Text>
           <SelectField

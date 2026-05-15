@@ -50,26 +50,115 @@ const [selectedItem, setSelectedItem] = useState(null);
     fetchMachinery();
   }, []);
 
+  /** Extract array of entries from an unknown API response shape. */
+  function extractEntries(resp) {
+    if (!resp) return null;
+    // Walk the most common Laravel / API response shapes
+    const body = resp?.data; // Axios strips one layer
+    if (!body) return null;
+    // 1) Direct array: res.data = [...]
+    if (Array.isArray(body)) return body;
+    // 2) { data: [...] }
+    if (Array.isArray(body.data)) return body.data;
+    // 3) { data: { data: [...] } }  (paginated wrapper)
+    if (body.data && Array.isArray(body.data.data)) return body.data.data;
+    // 4) { entries: [...] }  or  { results: [...] }  or  { records: [...] }
+    for (const key of ['entries', 'results', 'records', 'items', 'list', 'machines']) {
+      if (Array.isArray(body[key])) return body[key];
+      if (body.data && Array.isArray(body.data[key])) return body.data[key];
+    }
+    // 5) First array-valued property found in the response body
+    for (const val of Object.values(body)) {
+      if (Array.isArray(val)) return val;
+    }
+    if (body.data) {
+      for (const val of Object.values(body.data)) {
+        if (Array.isArray(val)) return val;
+      }
+    }
+    return null; // nothing found
+  }
+
   const loadMachines = useCallback(async () => {
     try {
       const dateStr = listDateStr(selectedDate);
+      console.log('MACHINE FETCH: projectId=%s date=%s', projectId, dateStr);
+      // Try both `date` and `entry_date` param names in case API uses a different field
       const res = await getEquipmentEntries({
         project_id: projectId,
         date: dateStr,
+        entry_date: dateStr,
       });
 
-      const list =
-        res?.data?.data?.data ||
-        res?.data?.data ||
-        res?.data ||
-        [];
+      // Log response structure for debugging
+      const body = res?.data;
+      console.log('MACHINE RESPONSE TYPE:', typeof body, Array.isArray(body) ? 'array' : typeof body);
+      if (body && typeof body === 'object' && !Array.isArray(body)) {
+        console.log('MACHINE RESPONSE KEYS:', Object.keys(body));
+        if (body.data && typeof body.data === 'object') {
+          console.log('MACHINE RESPONSE data TYPE:', Array.isArray(body.data) ? 'array' : typeof body.data);
+          if (!Array.isArray(body.data)) console.log('MACHINE RESPONSE data KEYS:', Object.keys(body.data));
+        }
+      }
 
-      const raw = Array.isArray(list) ? list : [];
-      const scoped = raw.filter((m) => {
-        const pid = m.project_id ?? m.project?.id;
-        if (pid == null || pid === '') return true;
-        return String(pid) === String(projectId ?? '');
-      });
+      const entries = extractEntries(res);
+      const raw = Array.isArray(entries) ? entries : [];
+
+      if (raw.length === 0) {
+        console.log('MACHINE: 0 entries from API – trying fallback fetch without date filter');
+        // Fallback: try fetching without date to see if API supports date param
+        try {
+          const resFallback = await getEquipmentEntries({ project_id: projectId });
+          const fbBody = resFallback?.data;
+          console.log('MACHINE FALLBACK TYPE:', typeof fbBody, Array.isArray(fbBody) ? 'array' : typeof fbBody);
+          if (fbBody && typeof fbBody === 'object' && !Array.isArray(fbBody)) {
+            console.log('MACHINE FALLBACK KEYS:', Object.keys(fbBody));
+          }
+          const fbEntries = extractEntries(resFallback);
+          if (Array.isArray(fbEntries) && fbEntries.length > 0) {
+            console.log('MACHINE: fallback returned %d entries (date filter may be wrong)', fbEntries.length);
+            console.log('MACHINE FB[0]:', JSON.stringify(fbEntries[0]));
+            raw.push(...fbEntries);
+          }
+        } catch (_) {
+          // ignore fallback errors
+        }
+      }
+
+      // Log the first 2 rows to inspect response shape
+      if (raw.length > 0) {
+        console.log("MACHINE RAW[0]:", JSON.stringify(raw[0]));
+        console.log("MACHINE RAW[1]:", JSON.stringify(raw[1]));
+      }
+
+      console.log("CURRENT PROJECT ID:", projectId);
+
+raw.forEach((m) => {
+  console.log("MACHINE ROW:", {
+    id: m.id,
+    project_id: m.project_id,
+    project: m.project,
+    equipment: m.equipment?.name,
+  });
+});
+
+const scoped = raw.filter((m) => {
+  const pid = m.project_id ?? m.project?.id;
+
+  console.log("FILTER CHECK:", {
+    rowProjectId: pid,
+    currentProjectId: projectId,
+  });
+
+  // if backend doesn't send project_id,
+  // assume backend already filtered
+  if (pid == null || pid === '') {
+    return true;
+  }
+
+  return String(pid) === String(projectId);
+});
+      console.log("Machines:", scoped.length, "/", raw.length);
       setMachines(scoped);
     } catch (err) {
       console.log('Machine fetch error', err?.response?.data || err.message);

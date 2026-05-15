@@ -1,5 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -131,9 +131,14 @@ export function LabourReportPartyEditScreen({ route, navigation }) {
     }
   }, [selectedDate, routeProjectId]);
 
+  // Re-fetch when date changes OR screen regains focus (e.g. after attendance changes)
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+    const unsubscribe = navigation.addListener('focus', () => {
+      fetchData();
+    });
+    return unsubscribe;
+  }, [fetchData, navigation]);
 
   const formattedLabours = useMemo(() => {
     return (rawLabours || []).map((item) => {
@@ -238,128 +243,134 @@ export function LabourReportPartyEditScreen({ route, navigation }) {
   };
 
   const saveWorkEntries = async () => {
-    const selected = partyLabours.filter((l) => pickedForWork[String(l.id)]);
-    if (!selected.length) return;
+  const selected = partyLabours.filter((l) => pickedForWork[String(l.id)]);
 
-    const workDone = workDoneInput.trim();
-    const measurement = measurementInput.trim();
-    const labourIds = selected.map((l) => Number(l.id));
-    const names = selected.map((l) => l.name).filter(Boolean);
+  console.log("SELECTED LABOURS:", selected);
 
-    setSaving(true);
-    try {
-      await addWork({
-        project_id: routeProjectId,
-        date: typeof selectedDate === 'string' ? selectedDate : new Date(selectedDate).toISOString().split('T')[0],
-        vendor_id: vendorKeyStr === 'no_vendor' ? null : vendorKeyStr,
-        work_done: workDone,
-        measurement,
-        labour_ids: labourIds,
-        labour_names: names.join(', '),
-      });
-      Alert.alert('Success', 'Work entry saved.');
-    } catch (err) {
-      const msg = err?.response?.data?.message || err?.message || 'Failed to save work entry.';
-      Alert.alert('Error', String(msg));
-      setSaving(false);
-      return;
-    }
-    setSaving(false);
+  if (!selected.length) {
+    Alert.alert("Error", "No labour selected");
+    return;
+  }
+
+  const workDone = workDoneInput.trim();
+  const measurement = measurementInput.trim();
+
+  const labourIds = selected.map((l) => Number(l.id));
+  const names = selected.map((l) => l.name).filter(Boolean);
+
+  const payload = {
+    project_id: routeProjectId,
+    date:
+      typeof selectedDate === 'string'
+        ? selectedDate
+        : new Date(selectedDate).toISOString().split('T')[0],
+    vendor_id:
+  vendorKeyStr === 'no_vendor'
+    ? null
+    : Number(vendorKeyStr),
+    work_done: workDone,
+    measurement,
+    labour_ids: labourIds,
+    labour_names: names.join(', '),
+  };
+
+  console.log("=================================");
+  console.log("ADD WORK PAYLOAD");
+  console.log(JSON.stringify(payload, null, 2));
+  console.log("=================================");
+if (!workDone) {
+  Alert.alert("Required", "Please enter work done");
+  return;
+}
+
+if (!measurement) {
+  Alert.alert("Required", "Please enter measurement");
+  return;
+}
+  setSaving(true);
+
+  try {
+
+    const response = await addWork(payload);
+
+    console.log("=================================");
+    console.log("ADD WORK SUCCESS");
+    console.log(JSON.stringify(response?.data, null, 2));
+    console.log("=================================");
+
+    Alert.alert("Success", "Work entry saved.");
+
     setPickedForWork({});
     setShowWorkSheet(false);
     setWorkDoneInput('');
     setMeasurementInput('');
+
     navigation.goBack();
-  };
 
-  const saveEditMaterialForm = async () => {
-    if (!editReasonInput.trim()) {
-      Alert.alert('Required', 'Please enter a reason for editing.');
-      return;
-    }
-    const labourIds = Object.keys(pickedForWork)
-      .filter((k) => pickedForWork[k])
-      .map((k) => Number(k));
-    if (!labourIds.length) {
-      Alert.alert('Required', 'Select at least one labour in the list.');
-      return;
-    }
-    const names = labourIds
-      .map((id) => {
-        const fromParty = partyLabours.find((l) => String(l.id) === String(id));
-        if (fromParty?.name) return fromParty.name;
-        return formattedLabours.find((l) => String(l.id) === String(id))?.name;
-      })
-      .filter(Boolean);
-    const labourNames = names.join(', ');
+  } catch (err) {
 
-    const payload = {
-      project_id: routeProjectId,
-      date: typeof selectedDate === 'string' ? selectedDate : new Date(selectedDate).toISOString().split('T')[0],
-      vendor_id: vendorKeyStr === 'no_vendor' ? null : vendorKeyStr,
-      work_done: workDoneInput.trim(),
-      measurement: measurementInput.trim(),
-      labour_ids: labourIds,
-      labour_names: labourNames,
-      edit_reason: editReasonInput.trim(),
-    };
+    console.log("=================================");
+    console.log("ADD WORK ERROR");
+    console.log("FULL ERROR:", err);
+    console.log("ERROR RESPONSE:", err?.response);
+    console.log("ERROR DATA:", err?.response?.data);
+    console.log("ERROR MESSAGE:", err?.message);
+    console.log("=================================");
 
-    setSaving(true);
-    try {
-      if (routeEntryId) {
-        await updateWork(routeEntryId, payload);
-      } else {
-        await addWork(payload);
-      }
-      Alert.alert('Success', 'Work entry updated.');
-    } catch (err) {
-      const msg = err?.response?.data?.message || err?.message || 'Failed to save.';
-      Alert.alert('Error', String(msg));
-      setSaving(false);
-      return;
-    }
+    Alert.alert(
+      "Error",
+      JSON.stringify(
+        err?.response?.data || err?.message || "Failed to save work",
+        null,
+        2
+      )
+    );
+
+  } finally {
     setSaving(false);
-    navigation.goBack();
-  };
+  }
+};
+  const renderItem = useCallback(
+    ({ item, index }) => {
+      const isPicked = !!pickedForWork[String(item.id)];
+      const g = (item.gender || '').toLowerCase();
+      const isFemale = g === 'female';
+      return (
+        <View style={[styles.row, index % 2 === 0 && styles.rowEven]}>
+          <View style={[styles.cell, styles.colSelect]}>
+            <Pressable onPress={() => togglePickForWork(item.id)} hitSlop={6}>
+              <View style={[styles.pickBox, isPicked && styles.pickBoxOn]}>
+                {isPicked && <MaterialCommunityIcons name="check" size={13} color="#fff" />}
+              </View>
+            </Pressable>
+          </View>
 
-  const renderItem = ({ item, index }) => {
-    const isPicked = !!pickedForWork[String(item.id)];
-    const g = (item.gender || '').toLowerCase();
-    const isFemale = g === 'female';
-    return (
-      <View style={[styles.row, index % 2 === 0 && styles.rowEven]}>
-        <View style={[styles.cell, styles.colSelect]}>
-          <Pressable onPress={() => togglePickForWork(item.id)} hitSlop={6}>
-            <View style={[styles.pickBox, isPicked && styles.pickBoxOn]}>
-              {isPicked && <MaterialCommunityIcons name="check" size={13} color="#fff" />}
+          <View style={[styles.cell, styles.colName]}>
+            <Text style={styles.name}>{item.name || '—'}</Text>
+          </View>
+
+          <View style={[styles.cell, styles.colVendor]}>
+            <Text style={styles.cellText}>
+              {item.vendorName ||
+                vendors.find((v) => Number(v.id) === Number(item.vendorId))?.name ||
+                '—'}
+            </Text>
+          </View>
+
+          <View style={[styles.cell, styles.colGender]}>
+            <View style={[styles.genderBadge, isFemale ? styles.genderF : styles.genderM]}>
+              <Text style={styles.genderText}>{item.gender?.[0]?.toUpperCase() ?? '—'}</Text>
             </View>
-          </Pressable>
-        </View>
+          </View>
 
-        <View style={[styles.cell, styles.colName]}>
-          <Text style={styles.name}>{item.name || '—'}</Text>
-        </View>
-
-        <View style={[styles.cell, styles.colVendor]}>
-          <Text style={styles.cellText}>
-            {item.vendorName ||
-              vendors.find((v) => Number(v.id) === Number(item.vendorId))?.name ||
-              '—'}
-          </Text>
-        </View>
-
-        <View style={[styles.cell, styles.colGender]}>
-          <View style={[styles.genderBadge, isFemale ? styles.genderF : styles.genderM]}>
-            <Text style={styles.genderText}>{item.gender?.[0]?.toUpperCase() ?? '—'}</Text>
+          <View style={[styles.cell, styles.colAction, { borderRightWidth: 0 }]}>
+            <MaterialCommunityIcons name="account-check" size={16} color="#16a34a" />
           </View>
         </View>
-
-        <View style={[styles.cell, styles.colAction, { borderRightWidth: 0 }]}>
-          <MaterialCommunityIcons name="account-check" size={16} color="#16a34a" />
-        </View>
-      </View>
-    );
-  };
+      );
+    },
+    [pickedForWork, vendors, togglePickForWork]
+  );
 
   /* ─── Edit: Material entry–style form (same pattern as MaterialFormScreen) ─── */
   if (isEditMode) {
@@ -459,9 +470,9 @@ export function LabourReportPartyEditScreen({ route, navigation }) {
               placeholder="e.g. sq.ft, running ft"
             />
 
-            <GradientButton
-              title="Save"
-              onPress={saveEditMaterialForm}
+          <GradientButton
+  title="Save"
+  onPress={saveWorkEntries}
               colors={['#2f86de', '#62b6ff']}
               left={<MaterialCommunityIcons name="content-save" size={18} color="#fff" />}
             />
@@ -479,10 +490,11 @@ export function LabourReportPartyEditScreen({ route, navigation }) {
         style={styles.wrap}
       >
         <FlatList
+          key={selectedDate}
           data={filtered}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderItem}
-          extraData={pickedForWork}
+          extraData={`${JSON.stringify(pickedForWork)}-${filtered.length}-${selectedDate}`}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.list}
           ListHeaderComponent={(

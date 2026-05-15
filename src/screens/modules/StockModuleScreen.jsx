@@ -1,8 +1,9 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
   Alert,
   FlatList,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -33,6 +34,9 @@ export function StockModuleScreen({ route, navigation }) {
   const [search, setSearch] = useState('');
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   const dateStr = formatListDate(selectedDate, dateKey);
 
@@ -43,9 +47,12 @@ export function StockModuleScreen({ route, navigation }) {
       if (projectId != null && projectId !== '') {
         params.project_id = projectId;
       }
+      console.log('Fetching stock reports with params:', JSON.stringify(params));
       const res = await getStockReportList(params);
+      console.log('Stock report raw response:', JSON.stringify(res?.data || res));
       const raw = res?.data?.data ?? res?.data ?? [];
       const list = Array.isArray(raw) ? raw : [];
+      console.log('Stock report parsed list length:', list.length);
       const mapped = list.map((s) => ({
         id: s.id,
         projectId: projectId,
@@ -60,6 +67,7 @@ export function StockModuleScreen({ route, navigation }) {
         bal: s.bal ?? s.balance ?? s.closing_balance ?? '',
         editReason: s.edit_reason ?? s.editReason ?? '',
       }));
+      console.log('Stock report mapped rows:', mapped.length);
       setRows(mapped);
     } catch (err) {
       console.log('Stock report fetch error:', err?.response?.data || err.message);
@@ -68,6 +76,10 @@ export function StockModuleScreen({ route, navigation }) {
       setLoading(false);
     }
   }, [projectId, dateStr]);
+
+  useEffect(() => {
+    fetchStockReports();
+  }, [fetchStockReports]);
 
   useFocusEffect(
     useCallback(() => {
@@ -88,23 +100,37 @@ export function StockModuleScreen({ route, navigation }) {
   };
 
   const handleDelete = (item) => {
-    Alert.alert('Delete stock', 'Remove this stock row?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteStockReport(item.id);
-            setRows((prev) => prev.filter((r) => r.id !== item.id));
-            Alert.alert('Deleted', 'Stock report removed.');
-          } catch (err) {
-            const msg = err?.response?.data?.message || err?.message || 'Delete failed.';
-            Alert.alert('Error', String(msg));
-          }
-        },
-      },
-    ]);
+    setDeleteTarget(item);
+    setDeleteReason('');
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteReason.trim()) {
+      Alert.alert('Required', 'Please enter a reason for deleting.');
+      return;
+    }
+    setDeleting(true);
+    try {
+      const remarkVal = deleteReason.trim();
+      console.log('Deleting stock id:', deleteTarget.id, 'remark:', remarkVal);
+      await deleteStockReport(deleteTarget.id, remarkVal);
+      setRows((prev) => prev.filter((r) => r.id !== deleteTarget.id));
+      setDeleteTarget(null);
+      setDeleteReason('');
+      Alert.alert('Deleted', 'Stock report removed.');
+    } catch (err) {
+  console.log(
+    'DELETE ERROR FULL:',
+    JSON.stringify(err?.response?.data, null, 2)
+  );
+
+  Alert.alert(
+    'Error',
+    JSON.stringify(err?.response?.data || {}, null, 2)
+  );
+} finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -145,8 +171,10 @@ export function StockModuleScreen({ route, navigation }) {
         </View>
 
         <FlatList
+          key={dateStr}
           data={filteredRows}
           keyExtractor={(item) => String(item.id)}
+          extraData={dateStr}
           contentContainerStyle={{ paddingBottom: 40 }}
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
@@ -214,6 +242,47 @@ export function StockModuleScreen({ route, navigation }) {
             </View>
           )}
         />
+
+        <Modal
+          visible={!!deleteTarget}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setDeleteTarget(null)}
+        >
+          <Pressable style={styles.sheetDim} onPress={() => setDeleteTarget(null)}>
+            <Pressable style={styles.sheetCard}>
+              <View style={styles.sheetHandle} />
+              <Text style={styles.sheetTitle}>Delete stock</Text>
+              <Text style={styles.sheetSub}>
+                Removing entry for {deleteTarget?.vendorName || 'vendor'}
+              </Text>
+              <TextInput
+                style={styles.sheetInput}
+                placeholder="Reason for deletion *"
+                value={deleteReason}
+                onChangeText={setDeleteReason}
+                multiline
+              />
+              <View style={styles.sheetActions}>
+                <Pressable
+                  style={styles.sheetCancelBtn}
+                  onPress={() => setDeleteTarget(null)}
+                >
+                  <Text style={styles.sheetCancelText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.sheetDeleteBtn, deleting && { opacity: 0.6 }]}
+                  onPress={confirmDelete}
+                  disabled={deleting}
+                >
+                  <Text style={styles.sheetDeleteText}>
+                    {deleting ? 'Deleting...' : 'Delete'}
+                  </Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </View>
     </ScreenContainer>
   );
@@ -306,4 +375,54 @@ const styles = StyleSheet.create({
   emptyWrap: { alignItems: 'center', paddingVertical: 40 },
   emptyTitle: { marginTop: 10, fontWeight: '900', fontSize: 16, color: '#374151' },
   emptyText: { marginTop: 6, color: '#7a8fa8', fontSize: 13 },
+
+  sheetDim: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  sheetCard: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#d1d5db',
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  sheetTitle: { fontSize: 18, fontWeight: '900', color: '#1a2f4e' },
+  sheetSub: { fontSize: 13, color: '#6b7280', marginTop: 4, marginBottom: 16 },
+  sheetInput: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 15,
+    minHeight: 80,
+    textAlignVertical: 'top',
+    marginBottom: 20,
+  },
+  sheetActions: { flexDirection: 'row', gap: 12 },
+  sheetCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 30,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+  },
+  sheetCancelText: { fontWeight: '800', color: '#475569' },
+  sheetDeleteBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 30,
+    backgroundColor: '#dc2626',
+    alignItems: 'center',
+  },
+  sheetDeleteText: { fontWeight: '800', color: '#fff' },
 });

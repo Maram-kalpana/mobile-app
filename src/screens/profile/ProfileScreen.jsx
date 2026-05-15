@@ -33,6 +33,9 @@ export function ProfileScreen({ navigation }) {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordSubmitting, setPasswordSubmitting] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+const [showNewPassword, setShowNewPassword] = useState(false);
+const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const closePasswordModal = useCallback(() => {
     setPasswordModalVisible(false);
@@ -239,11 +242,7 @@ export function ProfileScreen({ navigation }) {
             value={user?.username ?? user?.id ?? '—'}
           />
           <View style={styles.divider} />
-          <Row
-            icon="lock-outline"
-            label="Password"
-            value="••••••••"
-          />
+          
         </View>
 
         {/* ── SECURITY ── */}
@@ -283,15 +282,37 @@ export function ProfileScreen({ navigation }) {
               <View style={styles.modalHandle} />
               <Text style={styles.modalTitle}>Change password</Text>
               <Text style={styles.modalSub}>Enter your current password, then choose a new one.</Text>
+<View style={{ position: 'relative' }}>
+  <AppTextField
+    label="Current password"
+    value={oldPassword}
+    onChangeText={setOldPassword}
+    secureTextEntry={!showCurrentPassword}
+    autoCapitalize="none"
+    placeholder="••••••••"
+  />
 
-              <AppTextField
-                label="Current password"
-                value={oldPassword}
-                onChangeText={setOldPassword}
-                secureTextEntry
-                autoCapitalize="none"
-                placeholder="••••••••"
-              />
+  <TouchableOpacity
+    onPress={() =>
+      setShowCurrentPassword(!showCurrentPassword)
+    }
+    style={{
+      position: 'absolute',
+      right: 14,
+      top: 42,
+    }}
+  >
+    <MaterialCommunityIcons
+      name={
+        showCurrentPassword
+          ? 'eye-off-outline'
+          : 'eye-outline'
+      }
+      size={22}
+      color="#94a3b8"
+    />
+  </TouchableOpacity>
+</View>
               <AppTextField
                 label="New password"
                 value={newPassword}

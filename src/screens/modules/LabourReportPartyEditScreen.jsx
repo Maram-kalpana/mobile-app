@@ -101,10 +101,10 @@ export function LabourReportPartyEditScreen({ route, navigation }) {
           ? selectedDate
           : new Date(selectedDate).toISOString().split('T')[0];
       const q =
-        routeProjectId != null && routeProjectId !== '' ? { project_id: routeProjectId } : undefined;
+        routeProjectId != null && routeProjectId !== '' ? { project_id: routeProjectId } : {};
       const [labourRes, attendanceRes] = await Promise.all([
-        getLabours(q),
-        getTodayAttendance({ date: dateStr, ...(q || {}) }),
+        getLabours({ ...q, date: dateStr }),
+        getTodayAttendance({ date: dateStr, ...q }),
       ]);
       const rawList = labourRes?.data?.data ?? labourRes?.data ?? [];
       const raw = Array.isArray(rawList) ? rawList : [];

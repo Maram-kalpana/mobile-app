@@ -1,6 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   Alert,
   Image,
@@ -22,6 +23,8 @@ import { ScreenContainer } from '../../components/ScreenContainer';
 import { SelectField } from '../../components/SelectField';
 import { useApp } from '../../contexts/AppContext';
 import { colors } from '../../theme/theme';
+import { getLabours, addLabour, updateLabour } from '../../api/labourApi';
+import { markAttendance } from '../../api/attendanceApi';
 
 function parseTimeToMinutes(t) {
   const s = String(t || '').trim();
@@ -45,7 +48,7 @@ function diffHours(start, end) {
 
 export function LabourFormScreen({ route, navigation }) {
   const { labourId: routeLabourId } = route.params || {};
-  const { findLabourByPhone, upsertLabourPerson, labourPersonById, vendors, dateKey } = useApp();
+  const { vendors, dateKey } = useApp();
 
   const [phone, setPhone] = useState('');
   const [lookupHit, setLookupHit] = useState(null);
@@ -60,24 +63,46 @@ export function LabourFormScreen({ route, navigation }) {
   const [endTime, setEndTime] = useState('');
   const [totalHrs, setTotalHrs] = useState('');
   const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [labourListCache, setLabourListCache] = useState([]);
+  const [saving, setSaving] = useState(false);
 
+  // Load labour list on mount for phone lookup
+  useFocusEffect(
+    useCallback(() => {
+      (async () => {
+        try {
+          const res = await getLabours({ date: dateKey() });
+          const raw = res?.data?.data ?? res?.data ?? [];
+          setLabourListCache(Array.isArray(raw) ? raw : []);
+        } catch (err) {
+          console.log('[LabourForm] Failed to load labour list:', err.message);
+        }
+      })();
+    }, [])
+  );
+
+  // If editing via routeLabourId, fetch from API
   useEffect(() => {
     if (!routeLabourId) return;
-    const person = labourPersonById(routeLabourId);
-    if (!person) return;
-    setLabourId(routeLabourId);
-    setPhone(person?.phone ?? '');
-    setName(person?.name ?? '');
-    setAge(person?.age ?? '');
-    setGender(person?.gender ?? 'male');
-    setPhotoUri(person?.photoUri ?? null);
-    setVendorId(person?.vendorId ?? null);
-    setJoinedDate(person?.joinedDate ?? dateKey());
-    setStartTime(person?.startTime ?? '');
-    setEndTime(person?.endTime ?? '');
-    setTotalHrs(person?.totalHrs ? String(person.totalHrs) : '');
-    setLookupHit(person);
-  }, [routeLabourId, labourPersonById, dateKey]);
+    (async () => {
+      try {
+        const { getLabourById } = await import('../../api/labourApi');
+        const res = await getLabourById(routeLabourId);
+        const data = res?.data?.data ?? res?.data ?? {};
+        setLabourId(routeLabourId);
+        setPhone(data?.phone ?? '');
+        setName(data?.full_name ?? data?.name ?? '');
+        setAge(String(data?.age ?? ''));
+        setGender(data?.gender ?? 'male');
+        setPhotoUri(data?.profile_pic ?? null);
+        setVendorId(data?.vendor_id ?? data?.vendor?.id ?? null);
+        setJoinedDate(data?.effective_from ?? dateKey());
+        setLookupHit({ id: routeLabourId, name: data?.full_name ?? data?.name ?? '' });
+      } catch (err) {
+        console.log('[LabourForm] Failed to load labour by id:', err.message);
+      }
+    })();
+  }, [routeLabourId]);
 
   // Auto-calculate hours when start or end time changes
   useEffect(() => {
@@ -93,7 +118,7 @@ export function LabourFormScreen({ route, navigation }) {
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       quality: 0.7,
       allowsEditing: true,
       aspect: [1, 1],
@@ -111,7 +136,7 @@ export function LabourFormScreen({ route, navigation }) {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       quality: 0.7,
       allowsEditing: true,
       aspect: [1, 1],
@@ -122,14 +147,23 @@ export function LabourFormScreen({ route, navigation }) {
   };
 
   const onLookup = () => {
-    const found = findLabourByPhone(phone);
+    const q = phone.trim().toLowerCase();
+    if (!q) {
+      Alert.alert('Error', 'Enter a phone number to search.');
+      return;
+    }
+    const found = (labourListCache || []).find(
+      (l) => String(l.phone).toLowerCase() === q
+    );
     if (found) {
-      setLookupHit(found);
+      setLookupHit({ id: found.id, name: found.full_name || found.name || '' });
       setLabourId(found.id);
-      setName(found.name);
-      setAge(found.age);
-      setGender(found.gender);
-      setPhotoUri(found.photoUri);
+      setName(found.full_name || found.name || '');
+      setAge(String(found.age ?? ''));
+      setGender(found.gender || 'male');
+      setPhotoUri(found.profile_pic || null);
+      setVendorId(found.vendor_id ?? found?.vendor?.id ?? null);
+      Alert.alert('Found', `Matched: ${found.full_name || found.name}`);
     } else {
       setLookupHit(null);
       setLabourId(null);
@@ -138,14 +172,28 @@ export function LabourFormScreen({ route, navigation }) {
   };
 
   const savePerson = async () => {
-    const person = await upsertLabourPerson({
-      id: labourId ?? undefined,
-      name, age, gender, phone, photoUri, vendorId, joinedDate,
-      startTime, endTime, totalHrs,
-    });
-    setLabourId(person.id);
-    setLookupHit(person);
-    return person;
+    const payload = {
+      full_name: name,
+      age: Number(age) || 0,
+      gender,
+      phone,
+      vendor_id: vendorId,
+      effective_from: joinedDate,
+    };
+    if (photoUri && photoUri.startsWith('file://')) {
+      payload.profile_pic = photoUri;
+    }
+    console.log('[LabourForm] Saving labour payload:', JSON.stringify(payload));
+    if (labourId) {
+      const res = await updateLabour(labourId, payload);
+      console.log('[LabourForm] Update response:', res?.data);
+      return { id: labourId, ...payload };
+    } else {
+      const res = await addLabour(payload);
+      console.log('[LabourForm] Add response:', res?.data);
+      const created = res?.data?.data ?? res?.data ?? {};
+      return { id: created.id || created.labour_id, ...payload };
+    }
   };
 
   return (
@@ -283,14 +331,37 @@ export function LabourFormScreen({ route, navigation }) {
 
           {/* ── Save ── */}
           <GradientButton
-            title={routeLabourId ? 'Update Labour' : 'Save Labour'}
+            title={saving ? 'Saving…' : routeLabourId ? 'Update Labour' : 'Save Labour'}
+            disabled={saving}
             onPress={async () => {
               if (!phone.trim() || name.trim().length < 2) {
                 Alert.alert('Missing info', 'Enter phone and name.');
                 return;
               }
-              await savePerson();
-              navigation.goBack();
+              setSaving(true);
+              try {
+                const saved = await savePerson();
+                // Mark attendance if start/end times provided
+                if (saved?.id && (startTime.trim() || endTime.trim())) {
+                  try {
+                    await markAttendance({
+                      labour_id: saved.id,
+                      date: joinedDate,
+                      start_time: startTime.trim() || null,
+                      end_time: endTime.trim() || null,
+                    });
+                  } catch (attErr) {
+                    console.log('[LabourForm] Attendance mark error:', attErr.message);
+                    // Non-blocking: don't prevent navigation
+                  }
+                }
+                navigation.goBack();
+              } catch (err) {
+                console.log('[LabourForm] Save err:', err.message);
+                Alert.alert('Error', err?.response?.data?.message || err.message || 'Failed to save labour.');
+              } finally {
+                setSaving(false);
+              }
             }}
             left={<MaterialCommunityIcons name="content-save" size={18} color="#fff" />}
           />

@@ -110,7 +110,15 @@ export function LabourListScreen({ route }) {
   const loadLaboursAndAttendance = async () => {
     try {
       setLoading(true);
-      const params = projectId != null && projectId !== '' ? { project_id: projectId } : undefined;
+      const dateStr =
+        typeof selectedDate === 'string'
+          ? selectedDate
+          : new Date(selectedDate).toISOString().split('T')[0];
+      const params = {
+        ...(projectId != null && projectId !== '' ? { project_id: projectId } : {}),
+        date: dateStr,
+      };
+      console.log('[LabourListScreen] fetch params:', JSON.stringify(params));
       const labourRes = await getLabours(params);
       const raw = labourRes?.data?.data ?? labourRes?.data ?? [];
       const data = Array.isArray(raw) ? raw : [];
@@ -142,13 +150,9 @@ export function LabourListScreen({ route }) {
 
       setLabours(formatted);
 
-      const dateStr =
-        typeof selectedDate === 'string'
-          ? selectedDate
-          : new Date(selectedDate).toISOString().split('T')[0];
       const attRes = await getTodayAttendance({
         date: dateStr,
-        ...(params || {}),
+        ...(projectId != null && projectId !== '' ? { project_id: projectId } : {}),
       });
       const attRaw = attRes?.data?.data ?? attRes?.data ?? [];
       const attData = Array.isArray(attRaw) ? attRaw : [];

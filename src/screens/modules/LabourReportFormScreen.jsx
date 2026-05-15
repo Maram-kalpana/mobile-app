@@ -68,11 +68,11 @@ export function LabourReportFormScreen({ route, navigation }) {
         typeof selectedDate === 'string'
           ? selectedDate
           : new Date(selectedDate).toISOString().split('T')[0];
-      const q = projectId != null && projectId !== '' ? { project_id: projectId } : undefined;
+      const q = projectId != null && projectId !== '' ? { project_id: projectId } : {};
       const [labourRes, attRes, workRes] = await Promise.all([
-        getLabours(q),
-        getTodayAttendance({ date: dateStr, ...(q || {}) }),
-        getWorkList({ date: dateStr, ...(q || {}) }).catch(() => null),
+        getLabours({ ...q, date: dateStr }),
+        getTodayAttendance({ date: dateStr, ...q }),
+        getWorkList({ date: dateStr, ...q }).catch(() => null),
       ]);
       const rawList = labourRes?.data?.data ?? labourRes?.data ?? [];
       const rawLabours = Array.isArray(rawList) ? rawList : [];

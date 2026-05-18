@@ -79,15 +79,39 @@ export function MachineFormScreen({ route, navigation }) {
   const fetchMachine = async () => {
     try {
       const res = await getMachineById(entryId);
-      const data = res?.data?.data || {};
-      setVendorId(data.vendor_id || null);
-      setStartTime(data.start_time || '');
-      setEndTime(data.end_time || '');
-      setTotalHrs(String(data.total_hours || ''));
-      setWorkDone(data.work_done || '');
-      setSelectedMachineId(data.equipment_id || null);
+      console.log('MACHINE FETCH RAW:', JSON.stringify(res?.data, null, 2));
+      // Handle multiple API response shapes
+      const body = res?.data;
+      const data =
+        body?.data && typeof body.data === 'object' && !Array.isArray(body.data)
+          ? body.data
+          : body?.machine
+          ? body.machine
+          : body?.entry
+          ? body.entry
+          : body?.record
+          ? body.record
+          : typeof body === 'object' && body !== null && !Array.isArray(body) && !body?.data
+          ? body
+          : {};
+      console.log('MACHINE PARSED DATA:', JSON.stringify(data, null, 2));
+      // Normalise to Number so they match the SelectField option values
+      const rawVendorId = data.vendor_id ?? data.vendorId;
+      setVendorId(rawVendorId != null ? Number(rawVendorId) : null);
+      setStartTime(data.start_time ?? data.startTime ?? '');
+      setEndTime(data.end_time ?? data.endTime ?? '');
+      setTotalHrs(String(data.total_hours ?? data.totalHours ?? data.total_hrs ?? ''));
+      setWorkDone(data.work_done ?? data.workDone ?? '');
+      const rawEquipId = data.equipment_id ?? data.equipmentId;
+      setSelectedMachineId(rawEquipId != null ? Number(rawEquipId) : null);
+      // Also prefill the work date from the API response if available
+      const apiDate = data.date ?? data.entry_date ?? data.work_date ?? null;
+      if (apiDate) {
+        const dStr = typeof apiDate === 'string' ? apiDate.slice(0, 10) : String(apiDate).slice(0, 10);
+        if (dStr.length === 10) setWorkDate(dStr);
+      }
     } catch (err) {
-      console.log('Fetch machine error', err);
+      console.log('Fetch machine error', err?.response?.data || err.message);
     }
   };
 
@@ -206,7 +230,7 @@ export function MachineFormScreen({ route, navigation }) {
               { label: 'Select equipment', value: null },
               ...machines.map((m) => ({
                 label: m.name,
-                value: m.id,
+                value: Number(m.id),
               })),
             ]}
           />
@@ -222,7 +246,7 @@ export function MachineFormScreen({ route, navigation }) {
               { label: 'Select vendor', value: null },
               ...vendors.map((v) => ({
                 label: v.name,
-                value: v.id,
+                value: Number(v.id),
               })),
             ]}
           />

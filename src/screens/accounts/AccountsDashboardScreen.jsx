@@ -116,28 +116,7 @@ export function AccountsDashboardScreen({ route, navigation }) {
 />
         </View>
 
-        <View style={styles.totalEditor}>
-          <Text style={styles.sectionTitle}>Allocated budget</Text>
-          <Text style={styles.sectionSub}>
-            Amount released for this project (set by admin). This updates the Total amount card above.
-          </Text>
-          <AppTextField
-            label="Total amount (allocated)"
-            value={draftTotal}
-            onChangeText={setDraftTotal}
-            keyboardType="numeric"
-            placeholder="0"
-          />
-          <GradientButton
-            title="Save allocated total"
-            onPress={() => {
-              const next = Number(draftTotal);
-              if (!Number.isFinite(next) || next < 0) return;
-              void setTotalAmount(projectId, next);
-            }}
-            colors={['#2f86de', '#62b6ff']}
-          />
-        </View>
+        
       </ScrollView>
     </ScreenContainer>
   );

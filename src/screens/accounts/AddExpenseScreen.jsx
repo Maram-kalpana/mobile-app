@@ -88,7 +88,11 @@ export function AddExpenseScreen({ route, navigation }) {
 
   const dateLabel = useMemo(() => new Date().toLocaleString(), []);
 
-  const expenseTypeMap = { Labour: 'labour', Material: 'material', Machinery: 'machinery' };
+  const expenseTypeMap = {
+  Labour: 'labour',
+  Material: 'material',
+  Machinery: 'machine'
+};
 
   const handleSave = useCallback(async () => {
   if (!user || disabled) return;
@@ -97,14 +101,23 @@ export function AddExpenseScreen({ route, navigation }) {
 
   try {
     const payload = {
-      project_id: String(projectId),
-      expense_type: expenseTypeMap[expenseType] || 'labour',
-      party_id: Number(partyId),
-      amount: Number(amount),
-      date: new Date().toISOString().split('T')[0],
-      remarks: remarks.trim() || '',
-    };
+  project_id: Number(projectId),
 
+  expense_type:
+    expenseType === 'Labour'
+      ? 'labour'
+      : expenseType === 'Material'
+        ? 'material'
+        : 'machine',
+
+  party_id: Number(partyId),
+
+  amount: Number(amount),
+
+  date: new Date().toISOString().split('T')[0],
+
+  remarks: remarks.trim() || '',
+};
     console.log("=================================");
     console.log("ADD EXPENSE API CALLED");
     console.log("Payload:", JSON.stringify(payload, null, 2));

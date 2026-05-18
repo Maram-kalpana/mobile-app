@@ -11,7 +11,8 @@ import { DailyReportScreen } from '../../screens/home/DailyReportScreen';
 import HomeDashboardScreen from '../../screens/home/HomeDashboardScreen';
 import { LabourFormScreen } from '../../screens/modules/LabourFormScreen';
 import { LabourListScreen } from '../../screens/modules/LabourListScreen';
-import { LabourModuleScreen } from '../../screens/modules/LabourModuleScreen';
+// LabourModuleScreen commented out — not in use (Labour navigates directly to LabourList)
+// import { LabourModuleScreen } from '../../screens/modules/LabourModuleScreen';
 import { LabourReportFormScreen } from '../../screens/modules/LabourReportFormScreen';
 import { LabourReportPartyEditScreen } from '../../screens/modules/LabourReportPartyEditScreen';
 import { MachineFormScreen } from '../../screens/modules/MachineFormScreen';
@@ -51,7 +52,7 @@ export function HomeStack() {
       <Stack.Screen name="ProjectsList" component={ProjectsListScreen} options={{ title: 'Projects' }} />
       <Stack.Screen name="DailyReport" component={DailyReportScreen} options={{ title: 'Daily reports' }} />
       <Stack.Screen name="ProjectModules" component={ProjectModulesScreen} options={{ title: 'Site modules' }} />
-      <Stack.Screen name="LabourModule" component={LabourModuleScreen} options={{ title: 'Labour' }} />
+      {/* <Stack.Screen name="LabourModule" component={LabourModuleScreen} options={{ title: 'Labour' }} /> */}
       <Stack.Screen name="LabourList" component={LabourListScreen} options={{ title: "Today's labour" }} />
       <Stack.Screen name="LabourForm" component={LabourFormScreen} options={{ title: 'Add labour' }} />
       <Stack.Screen name="LabourReportForm" component={LabourReportFormScreen} options={{ title: 'Add labour report' }} />

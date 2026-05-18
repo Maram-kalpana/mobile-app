@@ -16,8 +16,8 @@ export const updateMaterialEntryApi = (id, data) => {
 };
 
 // DELETE
-export const deleteMaterialEntryApi = (id) => {
-  return api.delete(`/manager/material-entries/delete/${id}`);
+export const deleteMaterialEntryApi = (id, payload) => {
+  return api.post(`/manager/material-entries/delete/${id}`, payload ?? {});
 };
 
 // ITEMS BY VENDOR

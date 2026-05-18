@@ -69,17 +69,38 @@ export default function HomeDashboardScreen({ navigation }) {
       setLoadingDash(true);
       const pRes = await getProjects();
       const projectList = pRes?.data?.data || [];
+      console.log(
+  "PROJECT LIST FULL:",
+  JSON.stringify(projectList, null, 2)
+);
       setProjects(projectList);
 
       // Use first project for dashboard summary (or aggregate all)
       if (projectList.length > 0) {
-       const firstId = projectList[0]._id || projectList[0].id;
-        const dRes = await getProjectDashboard(firstId);
-        console.log('DASHBOARD API:', JSON.stringify(dRes?.data, null, 2));
-        if (dRes?.data?.success) {
-          setDashboardData(dRes.data.data);
-        }
-      }
+
+  console.log("PROJECT LIST");
+  console.log(JSON.stringify(projectList, null, 2));
+
+  const firstId = projectList?.[0]?.id;
+
+  console.log("FIRST PROJECT ID:", firstId);
+
+  if (!firstId) {
+    console.log("NO VALID PROJECT ID FOUND");
+    return;
+  }
+
+  const dRes = await getProjectDashboard(firstId);
+
+  console.log(
+    "DASHBOARD RESPONSE:",
+    JSON.stringify(dRes?.data, null, 2)
+  );
+
+  if (dRes?.data?.success) {
+    setDashboardData(dRes.data.data);
+  }
+}
     } catch (err) {
       console.log('DASHBOARD FETCH ERROR:', err?.response?.data || err);
     } finally {

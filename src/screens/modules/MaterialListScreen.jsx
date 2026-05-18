@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { GradientButton } from '../../components/GradientButton';
 import { ScreenContainer } from '../../components/ScreenContainer';
@@ -55,6 +55,9 @@ export function MaterialListScreen({ route, navigation }) {
   const [search, setSearch] = useState('');
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [showReasonModal, setShowReasonModal] = useState(false);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   // useFocusEffect ensures list refreshes when navigating back from MaterialForm
   useFocusEffect(
@@ -117,21 +120,27 @@ export function MaterialListScreen({ route, navigation }) {
   };
 
   const handleDelete = (item) => {
-    Alert.alert('Delete material', 'Remove this material line?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteMaterialEntryApi(item.id);
-            fetchMaterials();
-          } catch (err) {
-            console.log('DELETE ERROR:', err?.response?.data || err);
-          }
-        },
-      },
-    ]);
+    setDeleteTarget(item);
+    setDeleteReason('');
+    setShowReasonModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteReason.trim()) {
+      Alert.alert('Required', 'Please enter a reason for deleting this material entry.');
+      return;
+    }
+    if (!deleteTarget) return;
+    setShowReasonModal(false);
+    try {
+      await deleteMaterialEntryApi(deleteTarget.id, { reason: deleteReason.trim() });
+      fetchMaterials();
+    } catch (err) {
+      console.log('DELETE ERROR:', err?.response?.data || err);
+      Alert.alert('Error', 'Could not delete this entry.');
+    }
+    setDeleteTarget(null);
+    setDeleteReason('');
   };
 
   return (
@@ -196,6 +205,27 @@ export function MaterialListScreen({ route, navigation }) {
           }
         />
 
+        {/* ══ REASON MODAL ══ */}
+        <Modal visible={showReasonModal} transparent animationType="slide">
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Reason for delete</Text>
+              <TextInput
+                style={styles.reasonInput}
+                placeholder="Enter reason..."
+                value={deleteReason}
+                onChangeText={setDeleteReason}
+                multiline
+              />
+              <Pressable style={styles.saveBtn} onPress={confirmDelete}>
+                <Text style={styles.saveText}>Continue</Text>
+              </Pressable>
+              <Pressable onPress={() => setShowReasonModal(false)} style={styles.cancelBtn}>
+                <Text style={styles.cancelText}>Cancel</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
       </View>
     </ScreenContainer>
   );
@@ -265,4 +295,34 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { marginTop: 10, color: colors.text, fontWeight: '900', fontSize: 16 },
   emptyText: { marginTop: 6, color: colors.mutedText, textAlign: 'center' },
+
+  // Reason Modal styles
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' },
+  modalCard: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 16,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 12 },
+  reasonInput: {
+    width: '100%',
+    minHeight: 80,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 14,
+    marginBottom: 16,
+    textAlignVertical: 'top',
+  },
+  saveBtn: {
+    backgroundColor: '#2563eb',
+    padding: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  saveText: { color: '#fff', fontWeight: '800' },
+  cancelBtn: { marginTop: 10, alignItems: 'center' },
+  cancelText: { color: '#ef4444', fontWeight: '700' },
 });

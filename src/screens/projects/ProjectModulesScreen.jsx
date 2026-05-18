@@ -9,7 +9,8 @@ import { colors } from '../../theme/theme';
 import { getProjectById } from "../../api/projectApi";
 
 const modules = [
-  { key: 'LabourModule', title: 'Labour', subtitle: 'Add labour and view daily labour report', icon: 'account-hard-hat' },
+  // LabourModule commented out — navigates directly to LabourList
+  { key: 'LabourList', title: 'Labour', subtitle: 'Add labour and view daily labour report', icon: 'account-hard-hat' },
   { key: 'MachineList', title: 'Machinery', subtitle: 'Hours, party & output', icon: 'excavator' },
   { key: 'MaterialList', title: 'Material', subtitle: 'Inward / outward items', icon: 'cube-outline' },
   { key: 'StockModule', title: 'Stock', subtitle: 'Balances and receipts for this project', icon: 'warehouse' },

@@ -18,7 +18,9 @@ export const updateMachine = (id, data) =>
 
 // 🔥 DELETE ENTRY
 export const deleteMachine = (id, payload) =>
-  api.post(`/manager/equipment-entries/delete/${id}`, payload ?? {});
+  api.delete(`/manager/equipment-entries/delete/${id}`, {
+    data: payload ?? {},
+  });
 
 export const getMachines = () => {
   return api.get('/manager/get-machinery');

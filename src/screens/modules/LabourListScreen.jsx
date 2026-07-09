@@ -21,7 +21,7 @@ import { ScreenContainer } from '../../components/ScreenContainer';
 import { SelectField } from '../../components/SelectField';
 import { useApp } from '../../contexts/AppContext';
 import { colors } from '../../theme/theme';
-import { getLabours, addLabour, deleteLabour, updateLabour } from '../../api/labourApi';
+import { getLabours, addLabour, deleteLabour, updateWork,getWorkDetails } from '../../api/labourApi';
 
 /** Normalize any date value to a YYYY-MM-DD string. */
 function toDateOnlyStr(d) {
@@ -91,6 +91,7 @@ export function LabourListScreen({ route }) {
   const [editReason, setEditReason] = useState('');
   const [actionLabour, setActionLabour] = useState(null);
   const [formError, setFormError] = useState('');
+  const [workGroupId, setWorkGroupId] = useState(null);
 
   const projectTitle =
     (appProjects || []).find((p) => String(p.id) === String(projectId))?.name || 'Project';
@@ -112,36 +113,32 @@ export function LabourListScreen({ route }) {
       };
 
       const labourRes = await getLabours(baseParams);
+     
 
       const raw = labourRes?.data?.data ?? labourRes?.data ?? [];
       const data = Array.isArray(raw) ? raw : [];
 
       const formatted = data.map((item) => {
         const { vendorId, vendorName } = labourVendorFromApi(item);
-
-        const projectIdForRow =
-          item.project_id ||
-          item.projectId ||
-          item.project?.id ||
-          item.project?.project_id ||
-          null;
-
+      
         return {
           id: item.id,
           name: item.full_name,
           gender: item.gender,
+      
           vendorId,
           vendorName,
+      
           workDone: item.work_done || '',
           measurements: item.measurements || '',
-          effectiveFrom:
-            item.effective_from ||
-            item.effective_from_date ||
-            null,
-          projectId: projectIdForRow,
+      
+          workGroupId: item.work_group_id,
+          effectiveFrom: item.effective_from,
+          projectId: item.project_id,
+      
+          labourIds: [item.id],
         };
       });
-
       setLabours(formatted);
     } finally {
       setLoading(false);
@@ -184,20 +181,35 @@ export function LabourListScreen({ route }) {
   }, [filterVendorId, labours, search, vendors]);
 
   /** Open edit modal directly with prefilled data + reason field inside the form. */
-  const handleEditPress = (item) => {
-    setEditId(item.id);
-    setEditReason('');
-    setEffectiveFrom(
-      toDateOnlyStr(item.effectiveFrom) || toDateOnlyStr(selectedDate) || today,
-    );
-    setGender(item.gender || 'male');
-    setVendorId(Number(item.vendorId) || null);
-    setWorkDone(item.workDone || '');
-    setMeasurements(item.measurements || '');
-    setFormError('');
-    setShowAddModal(true);
-  };
+  const handleEditPress = async (item) => {
+  try {
+    const res = await getWorkDetails(item.workGroupId);
 
+    const data = res.data.data;
+
+    setWorkGroupId(data.work_group_id);
+
+    setEditId(item.id);
+
+    setGender(item.gender);
+
+    setVendorId(data.vendor?.id);
+
+    setEffectiveFrom(data.date);
+
+    setWorkDone(data.work_done);
+
+    setMeasurements(data.measurement);
+
+    setEditReason('');
+
+    setFormError('');
+
+    setShowAddModal(true);
+  } catch (err) {
+    console.log(err.response?.data);
+  }
+};
   /** Open reason modal before delete. */
   const handleDeletePress = (item) => {
     setActionLabour(item);
@@ -462,15 +474,16 @@ export function LabourListScreen({ route }) {
                   }
                   try {
                     if (editId) {
-                      await updateLabour(editId, {
+                      await updateWork(workGroupId,{
+                        labour_id: editId,
                         gender,
-                        effective_from: eff,
                         vendor_id: vendorId,
+                        date: eff,
                         work_done: workDone,
-                        measurements: measurements,
-                        edit_reason: editReason,
-                        ...(projectId != null && projectId !== '' ? { project_id: projectId } : {}),
-                      });
+                        measurement: measurements,
+                        reason_for_editing: editReason,
+                        project_id: projectId,
+                    });
                     } else {
                       const payload = {
                         gender,

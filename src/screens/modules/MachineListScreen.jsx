@@ -279,15 +279,18 @@ const scoped = raw.filter((m) => {
     </Text>
 
     <Text style={styles.sub2}>
-  {formatTime(item.start_time)} → {formatTime(item.end_time)} • {item.total_hours} hrs
-</Text>
-    <Text style={styles.sub2}>
-  Vendor: {item.vendor?.name || '-'}
+  {formatTime(item.start_time || item.start)} → {formatTime(item.end_time || item.close_time)} • {item.total_hours} hrs
 </Text>
 
-    {item.work_done ? (
-      <Text style={styles.work}>{item.work_done}</Text>
-    ) : null}
+<Text style={styles.sub2}>
+  Vendor: {item.vendor?.name || item.vendor || '-'}
+</Text>
+
+{!!(item.work_done || item.work_details) && (
+  <Text style={styles.work}>
+    {item.work_done || item.work_details}
+  </Text>
+)}
   </View>
   
 

@@ -165,7 +165,7 @@ export function MachineFormScreen({ route, navigation }) {
       total_hours: totalHrs,
       work_done: workDone,
       date: workDate,
-      ...(entryId ? { edit_reason: editReason.trim() } : {}),
+      ...(entryId ? { remarks: editReason.trim() } : {}),
     };
 
     try {

@@ -20,9 +20,30 @@ import { useApp } from '../../contexts/AppContext';
 import { getStockReportList, deleteStockReport } from '../../api/stockApi';
 
 function formatListDate(selectedDate, dateKey) {
-  if (!selectedDate) return dateKey();
-  if (typeof selectedDate === 'string') return selectedDate;
-  return new Date(selectedDate).toISOString().split('T')[0];
+  if (!selectedDate) {
+    return dateKey();
+  }
+
+  if (typeof selectedDate === 'string') {
+    // Already YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) {
+      return selectedDate;
+    }
+
+    // DD/MM/YYYY
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(selectedDate)) {
+      const [day, month, year] = selectedDate.split('/');
+      return `${year}-${month}-${day}`;
+    }
+  }
+
+  const date = new Date(selectedDate);
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
 }
 
 export function StockModuleScreen({ route, navigation }) {
@@ -55,15 +76,15 @@ export function StockModuleScreen({ route, navigation }) {
       console.log('Stock report parsed list length:', list.length);
       const mapped = list.map((s) => ({
         id: s.id,
-        projectId: projectId,
+        projectId: s.project_id ?? projectId, 
         date: s.date ?? dateStr,
-        itemId: s.item_id ?? s.itemId ?? null,
+        itemId: s.item_id ?? s.itemId ?? s.item?.id ?? null,
         itemName: s.item_name ?? s.itemName ?? s.item?.name ?? '',
-        vendorId: s.vendor_id ?? s.vendorId ?? null,
+        vendorId: s.vendor_id ?? s.vendorId ?? s.vendor?.id ?? null,
         vendorName: s.vendor_name ?? s.vendorName ?? s.vendor?.name ?? '',
         openBal: s.open_bal ?? s.openBal ?? s.opening_balance ?? '',
         received: s.received ?? s.received_qty ?? '',
-        cum: s.cum ?? s.cumulative ?? s.consumed ?? '',
+        cum: s.used ?? s.cum ?? s.cumulative ?? s.consumed ?? '',
         bal: s.bal ?? s.balance ?? s.closing_balance ?? '',
         editReason: s.edit_reason ?? s.editReason ?? '',
       }));
@@ -96,7 +117,11 @@ export function StockModuleScreen({ route, navigation }) {
   });
 
   const handleEdit = (item) => {
-    navigation.navigate('StockForm', { projectId, entryId: item.id });
+    navigation.navigate('StockForm', {
+      projectId,
+      entryId: item.id,
+      editData: item,
+    });
   };
 
   const handleDelete = (item) => {

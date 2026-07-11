@@ -133,7 +133,9 @@ export function MaterialListScreen({ route, navigation }) {
     if (!deleteTarget) return;
     setShowReasonModal(false);
     try {
-      await deleteMaterialEntryApi(deleteTarget.id, { reason: deleteReason.trim() });
+      await deleteMaterialEntryApi(deleteTarget.id, {
+        remarks: deleteReason.trim()
+     });
       fetchMaterials();
     } catch (err) {
       console.log('DELETE ERROR:', err?.response?.data || err);

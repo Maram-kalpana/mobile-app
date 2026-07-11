@@ -17,23 +17,46 @@ import { SelectField } from '../../components/SelectField';
 import { DatePickerField } from '../../components/DatePickerField';
 import { useApp } from '../../contexts/AppContext';
 import { getItems } from '../../api/itemApi';
-import { addStockReport, updateStockReport, getStockReportDetails } from '../../api/stockApi';
+import {
+  addStockReport,
+  updateStockReport,
+  getStockReportDetails,
+} from '../../api/stockApi';
 import { colors } from '../../theme/theme';
 
 function parseStockNum(s) {
-  const n = parseFloat(String(s ?? '').replace(/,/g, '').trim());
+  const n = parseFloat(
+    String(s ?? '')
+      .replace(/,/g, '')
+      .trim()
+  );
+
   return Number.isFinite(n) ? n : NaN;
 }
 
 function formatBalance(n) {
   if (!Number.isFinite(n)) return '';
-  if (Math.abs(n - Math.round(n)) < 1e-9) return String(Math.round(n));
+
+  if (Math.abs(n - Math.round(n)) < 1e-9) {
+    return String(Math.round(n));
+  }
+
   return n.toFixed(2).replace(/\.?0+$/, '');
 }
 
 export function StockFormScreen({ route, navigation }) {
-  const { projectId, entryId } = route.params || {};
-  const { dateKey, projects, vendors } = useApp();
+  const {
+    projectId,
+    entryId,
+    editData,
+  } = route.params || {};
+
+  const {
+    dateKey,
+    projects,
+    vendors,
+  } = useApp();
+
   const today = dateKey();
 
   const [date, setDate] = useState(today);
@@ -45,38 +68,48 @@ export function StockFormScreen({ route, navigation }) {
   const [bal, setBal] = useState('');
   const [editReason, setEditReason] = useState('');
   const [itemsList, setItemsList] = useState([]);
+  const [saving, setSaving] = useState(false);
 
   const isEditMode = !!entryId;
-  const projectTitle =
-    projects.find((p) => String(p.id) === String(projectId))?.name || 'Project';
 
+  const projectTitle =
+    projects.find(
+      (p) => String(p.id) === String(projectId)
+    )?.name || 'Project';
+
+  // LOAD ITEMS
   useEffect(() => {
     const loadItems = async () => {
       try {
         const iRes = await getItems();
-        if (iRes?.data?.success && iRes.data.data.length > 0) {
+
+        if (
+          iRes?.data?.success &&
+          Array.isArray(iRes.data.data)
+        ) {
           setItemsList(iRes.data.data);
         } else {
-          setItemsList([
-            { id: 1, name: 'Cement' },
-            { id: 2, name: 'Steel' },
-            { id: 3, name: 'Sand' },
-          ]);
+          setItemsList([]);
         }
       } catch (err) {
-        console.log('Items fetch error:', err?.response?.data || err);
-        setItemsList([
-          { id: 1, name: 'Cement' },
-          { id: 2, name: 'Steel' },
-          { id: 3, name: 'Sand' },
-        ]);
+        console.log(
+          'Items fetch error:',
+          err?.response?.data || err
+        );
+
+        setItemsList([]);
       }
     };
+
     loadItems();
   }, []);
 
+  // LOAD EDIT DATA
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId) {
+      return;
+    }
+
     if (!entryId) {
       setDate(today);
       setItemId(null);
@@ -86,118 +119,344 @@ export function StockFormScreen({ route, navigation }) {
       setCum('');
       setBal('');
       setEditReason('');
+
       return;
     }
-    (async () => {
+
+    const loadStockDetails = async () => {
       try {
+        // First immediately use list edit data
+        if (editData) {
+          console.log(
+            'EDIT DATA:',
+            JSON.stringify(editData)
+          );
+
+          setDate(editData.date || today);
+
+          setItemId(
+            editData.itemId ??
+            editData.item_id ??
+            editData.item?.id ??
+            null
+          );
+
+          setVendorId(
+            editData.vendorId ??
+            editData.vendor_id ??
+            editData.vendor?.id ??
+            null
+          );
+
+          setOpenBal(
+            String(
+              editData.openBal ??
+              editData.opening_balance ??
+              ''
+            )
+          );
+
+          setReceived(
+            String(editData.received ?? '')
+          );
+
+          setCum(
+            String(
+              editData.cum ??
+              editData.used ??
+              ''
+            )
+          );
+
+          setBal(
+            String(
+              editData.bal ??
+              editData.balance ??
+              ''
+            )
+          );
+        }
+
+        // Get latest data from API
         const res = await getStockReportDetails(entryId);
-        const data = res?.data?.data ?? res?.data ?? {};
+
+        console.log(
+          'STOCK DETAILS RESPONSE:',
+          JSON.stringify(res?.data || res)
+        );
+
+        const data =
+          res?.data?.data ??
+          res?.data ??
+          {};
+
         setDate(data.date || today);
-        setItemId(data.item_id ?? data.itemId ?? null);
-        setVendorId(data.vendor_id ?? data.vendorId ?? null);
-        setOpenBal(String(data.opening_balance ?? data.open_bal ?? data.openBal ?? ''));
-        setReceived(String(data.received ?? data.received_qty ?? ''));
-        setCum(String(data.used ?? data.cum ?? data.cumulative ?? data.consumed ?? ''));
-        setBal(String(data.bal ?? data.balance ?? data.closing_balance ?? ''));
+
+        setItemId(
+          data.item_id ??
+          data.itemId ??
+          data.item?.id ??
+          editData?.itemId ??
+          null
+        );
+
+        setVendorId(
+          data.vendor_id ??
+          data.vendorId ??
+          data.vendor?.id ??
+          editData?.vendorId ??
+          null
+        );
+
+        setOpenBal(
+          String(
+            data.opening_balance ??
+            data.open_bal ??
+            data.openBal ??
+            editData?.openBal ??
+            ''
+          )
+        );
+
+        setReceived(
+          String(
+            data.received ??
+            data.received_qty ??
+            editData?.received ??
+            ''
+          )
+        );
+
+        setCum(
+          String(
+            data.used ??
+            data.cum ??
+            data.cumulative ??
+            data.consumed ??
+            editData?.cum ??
+            ''
+          )
+        );
+
+        setBal(
+          String(
+            data.bal ??
+            data.balance ??
+            data.closing_balance ??
+            editData?.bal ??
+            ''
+          )
+        );
+
         setEditReason('');
       } catch (err) {
-        console.log('Stock details fetch error:', err?.response?.data || err.message);
+        console.log(
+          'Stock details fetch error:',
+          err?.response?.data || err?.message
+        );
       }
-    })();
-  }, [entryId, projectId, today]);
+    };
 
+    loadStockDetails();
+  }, [
+    entryId,
+    projectId,
+    today,
+    editData,
+  ]);
+
+  // AUTO BALANCE
   useEffect(() => {
     const o = parseStockNum(openBal);
     const r = parseStockNum(received);
     const c = parseStockNum(cum);
-    if (!Number.isFinite(o) && !Number.isFinite(r) && !Number.isFinite(c)) {
+
+    if (
+      !Number.isFinite(o) &&
+      !Number.isFinite(r) &&
+      !Number.isFinite(c)
+    ) {
       return;
     }
+
     const o2 = Number.isFinite(o) ? o : 0;
     const r2 = Number.isFinite(r) ? r : 0;
     const c2 = Number.isFinite(c) ? c : 0;
-    setBal(formatBalance(o2 + r2 - c2));
-  }, [openBal, received, cum]);
 
-  const [saving, setSaving] = useState(false);
+    setBal(
+      formatBalance(o2 + r2 - c2)
+    );
+  }, [openBal, received, cum]);
 
   const onSave = async () => {
     if (!projectId) {
-      Alert.alert('Error', 'Missing project');
+      Alert.alert(
+        'Error',
+        'Missing project'
+      );
+
       return;
     }
+
     if (!itemId || !vendorId) {
-      Alert.alert('Error', 'Select item and vendor');
+      Alert.alert(
+        'Error',
+        'Select item and vendor'
+      );
+
       return;
     }
-    if (isEditMode && !editReason.trim()) {
-      Alert.alert('Required', 'Please enter a reason for editing before updating.');
+
+    if (
+      isEditMode &&
+      !editReason.trim()
+    ) {
+      Alert.alert(
+        'Required',
+        'Please enter a reason for editing before updating.'
+      );
+
       return;
     }
 
     const formattedDate =
-      typeof date === 'string' ? date : new Date(date).toISOString().split('T')[0];
+      typeof date === 'string'
+        ? date
+        : new Date(date)
+            .toISOString()
+            .split('T')[0];
 
     const payload = {
       date: formattedDate,
-      project_id: projectId,
-      item_id: itemId,
-      vendor_id: vendorId,
+      project_id: Number(projectId),
+      item_id: Number(itemId),
+      vendor_id: Number(vendorId),
       opening_balance: openBal.trim(),
       received: received.trim(),
       used: cum.trim(),
     };
+
+    // IMPORTANT: Laravel expects reason
     if (isEditMode) {
-      payload.remark = editReason.trim();
+      payload.reason = editReason.trim();
     }
 
     setSaving(true);
+
     try {
-      console.log('Update payload:', JSON.stringify(payload));
+      console.log(
+        'SAVE PAYLOAD:',
+        JSON.stringify(payload)
+      );
+
       if (isEditMode) {
-        await updateStockReport(entryId, payload);
+        await updateStockReport(
+          entryId,
+          payload
+        );
       } else {
         await addStockReport(payload);
       }
-      Alert.alert('Success', isEditMode ? 'Stock updated' : 'Stock saved');
-      navigation.navigate('StockModule', { projectId });
+
+      Alert.alert(
+        'Success',
+        isEditMode
+          ? 'Stock updated'
+          : 'Stock saved'
+      );
+
+      navigation.navigate(
+        'StockModule',
+        { projectId }
+      );
     } catch (err) {
-      const msg = err?.response?.data?.message || err?.message || 'Failed to save stock.';
-      Alert.alert('Error', String(msg));
+      console.log(
+        'STOCK SAVE ERROR:',
+        JSON.stringify(
+          err?.response?.data || err?.message,
+          null,
+          2
+        )
+      );
+
+      const msg =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Failed to save stock.';
+
+      Alert.alert(
+        'Error',
+        String(msg)
+      );
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <ScreenContainer edges={['top', 'left', 'right']}>
+    <ScreenContainer
+      edges={['top', 'left', 'right']}
+    >
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={
+          Platform.OS === 'ios'
+            ? 'padding'
+            : undefined
+        }
         style={{ flex: 1 }}
       >
-        <ScrollView contentContainerStyle={styles.scroll}>
-          <Text style={styles.h1}>Stock</Text>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+        >
+          <Text style={styles.h1}>
+            Stock
+          </Text>
+
           <Text style={styles.sub}>
-            Opening balance, receipts, cumulative use, and closing balance for this project.
+            Opening balance, receipts,
+            cumulative use, and closing
+            balance for this project.
           </Text>
 
           <View style={styles.pill}>
-            <MaterialCommunityIcons name="office-building-outline" size={16} color="#1d78d8" />
-            <Text style={styles.pillText}>{projectTitle}</Text>
+            <MaterialCommunityIcons
+              name="office-building-outline"
+              size={16}
+              color="#1d78d8"
+            />
+
+            <Text style={styles.pillText}>
+              {projectTitle}
+            </Text>
           </View>
 
-          <DatePickerField label="Date" value={date} onChange={setDate} style={{ marginBottom: 14 }} />
+          <DatePickerField
+            label="Date"
+            value={date}
+            onChange={setDate}
+            style={{ marginBottom: 14 }}
+          />
 
           <View style={styles.card}>
-            <Text style={styles.section}>Stock report</Text>
+            <Text style={styles.section}>
+              Stock report
+            </Text>
 
             <SelectField
               label="Item"
               value={itemId}
               onChange={setItemId}
               options={[
-                { label: 'Select item', value: null },
-                ...(itemsList || []).map((i) => ({ label: i.name, value: i.id })),
+                {
+                  label: 'Select item',
+                  value: null,
+                },
+                ...(itemsList || []).map(
+                  (i) => ({
+                    label: i.name,
+                    value: i.id,
+                  })
+                ),
               ]}
             />
 
@@ -206,8 +465,16 @@ export function StockFormScreen({ route, navigation }) {
               value={vendorId}
               onChange={setVendorId}
               options={[
-                { label: 'Select vendor', value: null },
-                ...(vendors || []).map((v) => ({ label: v.name, value: v.id })),
+                {
+                  label: 'Select vendor',
+                  value: null,
+                },
+                ...(vendors || []).map(
+                  (v) => ({
+                    label: v.name,
+                    value: v.id,
+                  })
+                ),
               ]}
             />
 
@@ -219,6 +486,7 @@ export function StockFormScreen({ route, navigation }) {
                 style={styles.fieldLeft}
                 keyboardType="decimal-pad"
               />
+
               <AppTextField
                 label="Received"
                 value={received}
@@ -236,6 +504,7 @@ export function StockFormScreen({ route, navigation }) {
                 style={styles.fieldLeft}
                 keyboardType="decimal-pad"
               />
+
               <AppTextField
                 label="Balance"
                 value={bal}
@@ -245,7 +514,11 @@ export function StockFormScreen({ route, navigation }) {
                 placeholder="Auto"
               />
             </View>
-            <Text style={styles.hint}>Balance = Open + Received − Cumulative (auto)</Text>
+
+            <Text style={styles.hint}>
+              Balance = Open + Received −
+              Cumulative (auto)
+            </Text>
 
             {isEditMode && (
               <AppTextField
@@ -260,10 +533,23 @@ export function StockFormScreen({ route, navigation }) {
           </View>
 
           <GradientButton
-            title={isEditMode ? 'Update stock' : 'Save stock'}
+            title={
+              isEditMode
+                ? 'Update stock'
+                : 'Save stock'
+            }
             onPress={onSave}
-            colors={['#2f86de', '#62b6ff']}
-            left={<MaterialCommunityIcons name="content-save" size={18} color="#fff" />}
+            colors={[
+              '#2f86de',
+              '#62b6ff',
+            ]}
+            left={
+              <MaterialCommunityIcons
+                name="content-save"
+                size={18}
+                color="#fff"
+              />
+            }
           />
         </ScrollView>
       </KeyboardAvoidingView>
@@ -272,11 +558,29 @@ export function StockFormScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  scroll: { padding: 16, paddingBottom: 40 },
+  scroll: {
+    padding: 16,
+    paddingBottom: 40,
+  },
 
-  h1: { fontSize: 22, fontWeight: '900', color: colors.text },
-  sub: { marginTop: 6, color: colors.mutedText, marginBottom: 12 },
-  hint: { fontSize: 12, color: colors.mutedText, marginTop: 6, marginBottom: 4 },
+  h1: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: colors.text,
+  },
+
+  sub: {
+    marginTop: 6,
+    color: colors.mutedText,
+    marginBottom: 12,
+  },
+
+  hint: {
+    fontSize: 12,
+    color: colors.mutedText,
+    marginTop: 6,
+    marginBottom: 4,
+  },
 
   pill: {
     flexDirection: 'row',
@@ -286,12 +590,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: 'rgba(45,127,218,0.10)',
+    backgroundColor:
+      'rgba(45,127,218,0.10)',
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: 'rgba(45,127,218,0.22)',
+    borderColor:
+      'rgba(45,127,218,0.22)',
   },
-  pillText: { color: '#1d78d8', fontWeight: '900', fontSize: 12 },
+
+  pillText: {
+    color: '#1d78d8',
+    fontWeight: '900',
+    fontSize: 12,
+  },
 
   card: {
     borderRadius: 20,
@@ -301,9 +612,23 @@ const styles = StyleSheet.create({
     borderColor: colors.outline,
     marginBottom: 14,
   },
-  section: { fontWeight: '900', marginBottom: 10 },
 
-  fieldRow: { flexDirection: 'row', marginBottom: 0 },
-  fieldLeft: { flex: 1, marginRight: 10 },
-  fieldRight: { flex: 1 },
+  section: {
+    fontWeight: '900',
+    marginBottom: 10,
+  },
+
+  fieldRow: {
+    flexDirection: 'row',
+    marginBottom: 0,
+  },
+
+  fieldLeft: {
+    flex: 1,
+    marginRight: 10,
+  },
+
+  fieldRight: {
+    flex: 1,
+  },
 });

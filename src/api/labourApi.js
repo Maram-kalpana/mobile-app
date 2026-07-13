@@ -32,11 +32,10 @@ export const updateLabour = (id, data) => {
 };
 
 // DELETE
-export const deleteLabour = (id) => {
-  console.log(`[labourApi] deleteLabour(${id})`);
-  return api.delete(`/manager/labours/delete/${id}`);
+export const deleteLabour = (id, reason) => {
+  console.log(`[labourApi] deleteLabour(${id})`, reason);
+  return api.delete(`/manager/labours/delete/${id}`, { data: { reason } });
 };
-
 // ─── WORK ENTRIES ────────────────────────────────────────────────
 
 // ADD WORK

@@ -540,7 +540,7 @@ export function LabourListScreen({ route }) {
                   if (!actionLabour) return;
                   setShowReasonModal(false);
                   try {
-                    await deleteLabour(actionLabour.id);
+                    await deleteLabour(actionLabour.id, editReason);
                     loadLabours();
                   } catch (err) {
                     console.log('Delete error:', err.response?.data);

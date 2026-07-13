@@ -26,8 +26,8 @@ const { height, width } = Dimensions.get('window');
 export default function LoginScreen() {
   const { login } = useAuth();
   const insets = useSafeAreaInsets();
-  const [username, setUsername] = useState('manager');
-  const [password, setPassword] = useState('manager123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [secure, setSecure] = useState(true);
   const [error, setError] = useState('');
   const [rememberMe, setRememberMe] = useState(false);

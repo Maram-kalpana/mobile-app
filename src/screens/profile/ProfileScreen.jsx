@@ -523,7 +523,7 @@ if (data?.name || data?.email) {
 
         </View>
 
-        <Text style={styles.sectionLabel}>
+        {/* <Text style={styles.sectionLabel}>
           SECURITY
         </Text>
 
@@ -538,7 +538,7 @@ if (data?.name || data?.email) {
             }
           />
 
-        </View>
+        </View> */}
 
         <TouchableOpacity
           style={styles.logoutBtn}

@@ -18,6 +18,7 @@ import { ScreenContainer } from '../../components/ScreenContainer';
 import { SelectField } from '../../components/SelectField';
 import { useApp } from '../../contexts/AppContext';
 import { colors } from '../../theme/theme';
+import { useFocusEffect } from '@react-navigation/native';
 import { getMachineById, addMachine, updateMachine, deleteMachine, getMachines } from '../../api/machineApi';
 
 
@@ -53,7 +54,7 @@ function diffHours(start, end) {
 
 export function MachineFormScreen({ route, navigation }) {
   const { projectId, entryId, workDate: routeWorkDate } = route.params || {};
-  const { vendors, dateKey, projects } = useApp();
+  const { vendors, fetchVendors, dateKey, projects } = useApp();
   const today = dateKey();
   const [workDate, setWorkDate] = useState(
     routeWorkDate && String(routeWorkDate).length >= 8 ? String(routeWorkDate).slice(0, 10) : today
@@ -75,6 +76,7 @@ export function MachineFormScreen({ route, navigation }) {
     if (!entryId) return;
     fetchMachine();
   }, [entryId]);
+  
 
   const fetchMachine = async () => {
     try {
@@ -118,7 +120,12 @@ export function MachineFormScreen({ route, navigation }) {
   useEffect(() => {
     fetchDropdownData();
   }, []);
-
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchVendors?.();
+    }, [])
+  );
+  
   const fetchDropdownData = async () => {
     try {
       const machineRes = await getMachines();

@@ -96,17 +96,17 @@ export function AppProvider({ children }) {
 
   /* -------------------- FETCH VENDORS -------------------- */
 
-  const fetchVendors = async () => {
+  const fetchVendors = useCallback(async () => {
     try {
       const res = await getVendorsByType();
       console.log("VENDOR API FULL RESPONSE:", JSON.stringify(res?.data, null, 2));
       const raw = res?.data?.data ?? res?.data ?? [];
       const data = Array.isArray(raw) ? raw : [];
-
+  
       if (data.length === 0) {
         console.warn("VENDOR WARNING: API returned empty array. Check backend /manager/vendors-by-type");
       }
-
+  
       setVendors(
         data.map((v) => ({
           id: v.id,
@@ -116,10 +116,9 @@ export function AppProvider({ children }) {
       );
     } catch (err) {
       console.log("VENDOR FETCH ERROR:", err?.response?.data || err?.message || err);
-      // Keep vendors as empty array on error
       setVendors([]);
     }
-  };
+  }, []);
 
   // Re-fetch vendors whenever auth state changes (login, restore, logout)
   useEffect(() => {
@@ -294,6 +293,7 @@ const getBudget = useCallback((projectId) => {
   vendors,
 
   // VENDORS
+  fetchVendors,
   saveVendor,
   deleteVendor,
 
@@ -321,6 +321,7 @@ const getBudget = useCallback((projectId) => {
 }), [
   projects,
   vendors,
+  fetchVendors,
   saveVendor,
   deleteVendor,
   materials,

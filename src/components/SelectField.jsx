@@ -1,10 +1,12 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/theme';
 
 export function SelectField({ label, value, onChange, options, placeholder = 'Select', style }) {
   const [open, setOpen] = useState(false);
+  const insets = useSafeAreaInsets();
   const selectedLabel = useMemo(
     () => options.find((o) => o.value === value)?.label ?? '',
     [options, value],
@@ -21,8 +23,9 @@ export function SelectField({ label, value, onChange, options, placeholder = 'Se
       </Pressable>
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
-          <View style={styles.sheet}>
-            <ScrollView>
+          <View style={[styles.sheet, { paddingBottom: insets.bottom + 12 }]}>
+            <View style={styles.sheetHandle} />
+            <ScrollView showsVerticalScrollIndicator={false}>
               {options.map((opt) => (
                 <Pressable
                   key={String(opt.value)}
@@ -62,15 +65,25 @@ const styles = StyleSheet.create({
   placeholder: { color: 'rgba(35,63,95,0.38)' },
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.28)', justifyContent: 'flex-end' },
   sheet: {
-    maxHeight: '55%',
+    maxHeight: '65%',              // was 55% — a bit more breathing room
+    minHeight: 160,                 // ensures short lists don't look cramped
     backgroundColor: '#fff',
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    padding: 12,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 10,
+    paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: colors.outline,
   },
-  option: { paddingHorizontal: 12, paddingVertical: 12, borderRadius: 10 },
-  optionActive: { backgroundColor: '#eaf3ff' },
-  optionText: { color: colors.text, fontWeight: '700' },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#e2e8f0',
+    marginBottom: 10,
+  },
+  option: { paddingHorizontal: 12, paddingVertical: 14 },   // more vertical padding = easier to tap/see
+  optionActive: { backgroundColor: '#eaf3ff', borderRadius: 10 },
+  optionText: { color: colors.text, fontWeight: '700', fontSize: 15 },
 });

@@ -48,7 +48,7 @@ function diffHours(start, end) {
 
 export function LabourFormScreen({ route, navigation }) {
   const { labourId: routeLabourId } = route.params || {};
-  const { vendors, dateKey } = useApp();
+  const { vendors, fetchVendors,dateKey } = useApp();
 
   const [phone, setPhone] = useState('');
   const [lookupHit, setLookupHit] = useState(null);
@@ -69,6 +69,7 @@ export function LabourFormScreen({ route, navigation }) {
   // Load labour list on mount for phone lookup
   useFocusEffect(
     useCallback(() => {
+      fetchVendors?.();
       (async () => {
         try {
           const res = await getLabours({ date: dateKey() });

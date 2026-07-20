@@ -17,6 +17,7 @@ import { SelectField } from '../../components/SelectField';
 import { DatePickerField } from '../../components/DatePickerField';
 import { useApp } from '../../contexts/AppContext';
 import { getItems } from '../../api/itemApi';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   addStockReport,
   updateStockReport,
@@ -53,9 +54,10 @@ export function StockFormScreen({ route, navigation }) {
 
   const {
     dateKey,
-    projects,
-    vendors,
-  } = useApp();
+      projects,
+      vendors,
+      fetchVendors,
+    } = useApp();
 
   const today = dateKey();
 
@@ -103,12 +105,19 @@ export function StockFormScreen({ route, navigation }) {
 
     loadItems();
   }, []);
+  
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchVendors?.();
+    }, [])
+  );
 
   // LOAD EDIT DATA
   useEffect(() => {
     if (!projectId) {
       return;
     }
+
 
     if (!entryId) {
       setDate(today);
@@ -122,6 +131,7 @@ export function StockFormScreen({ route, navigation }) {
 
       return;
     }
+    
 
     const loadStockDetails = async () => {
       try {

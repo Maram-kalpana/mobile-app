@@ -18,6 +18,7 @@ import { SelectField } from '../../components/SelectField';
 import { DatePickerField } from '../../components/DatePickerField';
 import { useApp } from '../../contexts/AppContext';
 import { colors } from '../../theme/theme';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   getMaterialEntries,
   addMaterialEntryApi,
@@ -32,6 +33,7 @@ export function MaterialFormScreen({ route, navigation }) {
 
   const app = useApp();
   const vendors = app?.vendors || [];
+  const fetchVendors = app?.fetchVendors;
   const projects = app?.projects || [];
   const dateKey = app?.dateKey || (() => new Date().toISOString().slice(0, 10));
 
@@ -58,7 +60,11 @@ export function MaterialFormScreen({ route, navigation }) {
     fetchDropdowns();
     if (isEditMode) fetchEntry();
   }, []);
-
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchVendors?.();
+    }, [])
+  );
   // Fetch dropdowns (projects + items)
   const fetchDropdowns = async () => {
     try {
@@ -241,7 +247,7 @@ export function MaterialFormScreen({ route, navigation }) {
             value={qty}
             onChangeText={setQty}
             placeholder="0"
-            keyboardType="numeric"
+            keyboardType="default"
           />
 
           {/* Supplier */}
